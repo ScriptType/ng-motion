@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -455,7 +455,7 @@ export class UseInViewPage {
 
   readonly basicCode = [
     "import { Component } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '// Declarative: use the whileInView directive input',
     '@Component({',
@@ -475,7 +475,7 @@ export class UseInViewPage {
     '',
     '// Programmatic: use the useInView() hook',
     "import { afterNextRender, inject, Injector, ElementRef, runInInjectionContext, type Signal } from '@angular/core';",
-    "import { useInView } from 'ng-motion';",
+    "import { useInView } from '@scripttype/ng-motion';",
     '',
     'export class TrackerComponent {',
     "  private readonly el = inject(ElementRef<HTMLElement>);",
@@ -526,7 +526,7 @@ export class UseInViewPage {
 
   readonly hookCode = [
     "import { afterNextRender, inject, Injector, ElementRef, viewChild, runInInjectionContext, type Signal } from '@angular/core';",
-    "import { useInView } from 'ng-motion';",
+    "import { useInView } from '@scripttype/ng-motion';",
     '',
     '@Component({ ... })',
     'export class AnalyticsTrackerComponent {',

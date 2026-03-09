@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmLayoutGroupDirective, NgmMotionDirective } from 'ng-motion';
+import { NgmLayoutGroupDirective, NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 interface LayoutGroupDemoItem {
@@ -820,7 +820,7 @@ export class LayoutPage {
   ].join('\n');
 
   readonly layoutGroupCode = [
-    "import { NgmMotionDirective, NgmLayoutGroupDirective } from 'ng-motion';",
+    "import { NgmMotionDirective, NgmLayoutGroupDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmLayoutGroupDirective],',

@@ -6,7 +6,7 @@ import {
   useMotionValue,
   usePresenceList,
   useTransform,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -740,8 +740,8 @@ export class MotionDirectivePage {
   // ── Code examples ──
   readonly basicStateCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
-    "import type { Variants, Transition } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
+    "import type { Variants, Transition } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -772,7 +772,7 @@ export class MotionDirectivePage {
 
   readonly signalBindingCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -837,7 +837,7 @@ export class MotionDirectivePage {
 
   readonly variantPropagationCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -869,7 +869,7 @@ export class MotionDirectivePage {
 
   readonly motionValueCode = [
     "import { Component } from '@angular/core';",
-    "import { NgmMotionDirective, useMotionValue, useTransform } from 'ng-motion';",
+    "import { NgmMotionDirective, useMotionValue, useTransform } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -909,7 +909,7 @@ export class MotionDirectivePage {
 
   readonly svgCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',

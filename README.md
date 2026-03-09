@@ -27,7 +27,7 @@ The docs assume a standalone Angular application created with the Angular CLI.
 
 ```ts
 import { Component, signal, type WritableSignal } from '@angular/core';
-import { NgmMotionDirective, type TargetAndTransition, type Transition } from 'ng-motion';
+import { NgmMotionDirective, type TargetAndTransition, type Transition } from '@scripttype/ng-motion';
 
 @Component({
   selector: 'app-demo',
@@ -92,7 +92,7 @@ Directive inputs also work well with Angular `signal()` and `computed()` binding
 For package consumers:
 
 ```bash
-npm install ng-motion motion-dom motion-utils
+npm install @scripttype/ng-motion motion-dom motion-utils
 ```
 
 For repository development:

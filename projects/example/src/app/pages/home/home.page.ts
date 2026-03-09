@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
-import type { Variants } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
+import type { Variants } from '@scripttype/ng-motion';
 
 interface FeatureCard {
   icon: string;

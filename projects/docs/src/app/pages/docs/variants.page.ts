@@ -1,6 +1,6 @@
 import { Component, computed, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective, type Variants } from 'ng-motion';
+import { NgmMotionDirective, type Variants } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -648,7 +648,7 @@ export class VariantsPage {
   // ── Code examples ──
 
   readonly definingCode = [
-    "import { NgmMotionDirective, type Variants } from 'ng-motion';",
+    "import { NgmMotionDirective, type Variants } from '@scripttype/ng-motion';",
     '',
     'readonly variants: Variants = {',
     '  open: { opacity: 1, x: 0 },',
@@ -774,7 +774,7 @@ export class VariantsPage {
 
   readonly dynamicCode = [
     "import { computed, signal, type Signal } from '@angular/core';",
-    "import { type Variants } from 'ng-motion';",
+    "import { type Variants } from '@scripttype/ng-motion';",
     '',
     'readonly expanded = signal(false);',
     '',

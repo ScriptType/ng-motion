@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 
 @Component({
   selector: 'app-nav',
@@ -44,7 +44,7 @@ import { NgmMotionDirective } from 'ng-motion';
         <div class="flex items-center gap-3">
           <!-- GitHub -->
           <a
-            href="#"
+            href="https://github.com/ScriptType/ng-motion"
             target="_blank"
             rel="noopener"
             ngmMotion

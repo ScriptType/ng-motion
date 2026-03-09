@@ -6,7 +6,7 @@ import {
   useSpring,
   type MotionValue,
   type SpringOptions,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -454,7 +454,7 @@ export class UseSpringPage {
     "  useSpring,",
     "  type MotionValue,",
     "  type SpringOptions,",
-    "} from 'ng-motion';",
+    "} from '@scripttype/ng-motion';",
     '',
     'readonly config: SpringOptions = { stiffness: 260, damping: 12 };',
     'readonly rawX: MotionValue<number> = useMotionValue(0);',
@@ -481,7 +481,7 @@ export class UseSpringPage {
   ].join('\n');
 
   readonly interactiveCode = [
-    "import { useMotionValue, useSpring, type MotionValue } from 'ng-motion';",
+    "import { useMotionValue, useSpring, type MotionValue } from '@scripttype/ng-motion';",
     '',
     'readonly rawX: MotionValue<number> = useMotionValue(0);',
     'readonly springX: MotionValue<number> = useSpring(this.rawX, {',
@@ -501,7 +501,7 @@ export class UseSpringPage {
 
   readonly injectionContextCode = [
     "import { Component } from '@angular/core';",
-    "import { useMotionValue, useSpring } from 'ng-motion';",
+    "import { useMotionValue, useSpring } from '@scripttype/ng-motion';",
     '',
     '@Component({ ... })',
     'export class MyComponent {',

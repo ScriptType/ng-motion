@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -355,18 +355,18 @@ import { CodeBlockComponent } from '../../components/code-block.component';
             All ng-motion APIs are imported from the root
             <code
               class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-              >'ng-motion'</code
+              >'@scripttype/ng-motion'</code
             >
             package path. There are no sub-path imports (e.g.,
             <code
               class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-              >'ng-motion/gestures'</code
+              >'@scripttype/ng-motion/gestures'</code
             >
             does not exist). Features, directives, hooks, and utilities are all
             available from
             <code
               class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-              >import &lcub; ... &rcub; from 'ng-motion'</code
+              >import &lcub; ... &rcub; from '@scripttype/ng-motion'</code
             >.
           </p>
         </div>
@@ -523,7 +523,7 @@ export class FeatureLoadingPage {
 
   readonly provideCode = [
     "import { type ApplicationConfig } from '@angular/core';",
-    "import { provideMotionFeatures, ngmAnimationFeatures } from 'ng-motion';",
+    "import { provideMotionFeatures, ngmAnimationFeatures } from '@scripttype/ng-motion';",
     '',
     'export const appConfig: ApplicationConfig = {',
     '  providers: [',
@@ -534,7 +534,7 @@ export class FeatureLoadingPage {
 
   readonly allFeaturesCode = [
     '// Include drag and layout projection',
-    "import { provideMotionFeatures, ngmAllFeatures } from 'ng-motion';",
+    "import { provideMotionFeatures, ngmAllFeatures } from '@scripttype/ng-motion';",
     '',
     'export const appConfig: ApplicationConfig = {',
     '  providers: [',
@@ -544,26 +544,26 @@ export class FeatureLoadingPage {
   ].join('\n');
 
   readonly lazyLoadCode = [
-    "import { provideMotionFeatures } from 'ng-motion';",
+    "import { provideMotionFeatures } from '@scripttype/ng-motion';",
     '',
     'export const appConfig: ApplicationConfig = {',
     '  providers: [',
     '    // Async loader — features are code-split into a separate chunk',
     '    provideMotionFeatures(',
-    "      () => import('ng-motion').then(m => m.ngmAllFeatures)",
+    "      () => import('@scripttype/ng-motion').then(m => m.ngmAllFeatures)",
     '    ),',
     '  ],',
     '};',
   ].join('\n');
 
   readonly manualInitCode = [
-    "import { initNgmFeatures, loadNgmFeatures } from 'ng-motion';",
+    "import { initNgmFeatures, loadNgmFeatures } from '@scripttype/ng-motion';",
     '',
     '// Option 1: Register all defaults imperatively',
     'initNgmFeatures();',
     '',
     '// Option 2: Load specific features on demand',
-    "import { ngmAllFeatures } from 'ng-motion';",
+    "import { ngmAllFeatures } from '@scripttype/ng-motion';",
     'loadNgmFeatures(ngmAllFeatures);',
   ].join('\n');
 

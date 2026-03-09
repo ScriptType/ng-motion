@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 import { DemoReplayComponent } from '../../components/demo-replay.component';
 
@@ -594,7 +594,7 @@ export class ScrollPage {
     '  NgmMotionDirective,',
     '  useScroll, useSpring, useTransform,',
     '  type MotionStyle, type SpringOptions,',
-    "} from 'ng-motion';",
+    "} from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  standalone: true,',
@@ -720,7 +720,7 @@ export class ScrollPage {
   ].join('\n');
 
   readonly imperativeScrollCode = [
-    "import { animate, scroll, scrollInfo } from 'ng-motion';",
+    "import { animate, scroll, scrollInfo } from '@scripttype/ng-motion';",
     '',
     '// Link an animation to scroll progress',
     'const controls = animate(element, { opacity: [0, 1] }, { duration: 1 });',

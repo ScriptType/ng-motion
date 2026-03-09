@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 import { DemoReplayComponent } from '../../components/demo-replay.component';
 
@@ -328,17 +328,17 @@ import { DemoReplayComponent } from '../../components/demo-replay.component';
   `,
 })
 export class InstallationPage {
-  readonly installNpm = 'npm install ng-motion motion-dom motion-utils';
+  readonly installNpm = 'npm install @scripttype/ng-motion motion-dom motion-utils';
 
-  readonly installBun = 'bun add ng-motion motion-dom motion-utils';
+  readonly installBun = 'bun add @scripttype/ng-motion motion-dom motion-utils';
 
-  readonly installPnpm = 'pnpm add ng-motion motion-dom motion-utils';
+  readonly installPnpm = 'pnpm add @scripttype/ng-motion motion-dom motion-utils';
 
-  readonly installYarn = 'yarn add ng-motion motion-dom motion-utils';
+  readonly installYarn = 'yarn add @scripttype/ng-motion motion-dom motion-utils';
 
   readonly globalConfigCode = [
     "import { type ApplicationConfig } from '@angular/core';",
-    "import { provideMotionConfig, type MotionConfig } from 'ng-motion';",
+    "import { provideMotionConfig, type MotionConfig } from '@scripttype/ng-motion';",
     '',
     'const motionConfig: MotionConfig = {',
     '  transition: { duration: 0.4 },',
@@ -352,7 +352,7 @@ export class InstallationPage {
 
   readonly verifyCode = [
     "import { Component } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     "  selector: 'app-root',",

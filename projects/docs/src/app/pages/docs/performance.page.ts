@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -446,7 +446,7 @@ export class PerformancePage {
     },
     {
       title: 'Batch DOM reads and writes via frame scheduling.',
-      body: "Import frame and cancelFrame from 'ng-motion' to schedule DOM measurements and mutations in the correct order, avoiding layout thrashing.",
+      body: "Import frame and cancelFrame from '@scripttype/ng-motion' to schedule DOM measurements and mutations in the correct order, avoiding layout thrashing.",
     },
     {
       title: 'Prefer spring transitions for interactive gestures.',
@@ -461,7 +461,7 @@ export class PerformancePage {
   // ── Code snippets ──────────────────────────────────────────────
 
   readonly goldenRuleCode = [
-    "import { useMotionValue, useTransform } from 'ng-motion';",
+    "import { useMotionValue, useTransform } from '@scripttype/ng-motion';",
     '',
     '// Good: high-frequency value stays as MotionValue',
     'readonly x = useMotionValue(0);',
@@ -475,7 +475,7 @@ export class PerformancePage {
   ].join('\n');
 
   readonly willChangeCode = [
-    "import { useWillChange } from 'ng-motion';",
+    "import { useWillChange } from '@scripttype/ng-motion';",
     '',
     '// Manual will-change control for complex animations',
     'readonly willChange = useWillChange();',
@@ -488,7 +488,7 @@ export class PerformancePage {
   ].join('\n');
 
   readonly reducedMotionCode = [
-    "import { useReducedMotion } from 'ng-motion';",
+    "import { useReducedMotion } from '@scripttype/ng-motion';",
     '',
     '// Returns an Angular signal that tracks the OS setting',
     'readonly prefersReduced = useReducedMotion();',
@@ -498,7 +498,7 @@ export class PerformancePage {
   ].join('\n');
 
   readonly reducedMotionGlobalCode = [
-    "import { provideMotionConfig } from 'ng-motion';",
+    "import { provideMotionConfig } from '@scripttype/ng-motion';",
     '',
     'export const appConfig = {',
     '  providers: [',
@@ -508,7 +508,7 @@ export class PerformancePage {
   ].join('\n');
 
   readonly motionValueEventCode = [
-    "import { useMotionValue, useMotionValueEvent } from 'ng-motion';",
+    "import { useMotionValue, useMotionValueEvent } from '@scripttype/ng-motion';",
     '',
     '@Component({ /* ... */ })',
     'export class MyComponent {',
@@ -535,7 +535,7 @@ export class PerformancePage {
   ].join('\n');
 
   readonly frameSchedulingCode = [
-    "import { frame, cancelFrame } from 'ng-motion';",
+    "import { frame, cancelFrame } from '@scripttype/ng-motion';",
     '',
     '// Batch DOM reads and writes to avoid layout thrashing',
     'frame.read(() => {',

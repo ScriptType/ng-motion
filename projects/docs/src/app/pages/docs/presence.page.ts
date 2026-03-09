@@ -1,6 +1,6 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective, NgmPresenceDirective, usePresenceList } from 'ng-motion';
+import { NgmMotionDirective, NgmPresenceDirective, usePresenceList } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 let nextId = 0;
@@ -702,8 +702,8 @@ export class PresencePage {
 
   readonly basicExitCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective, NgmPresenceDirective } from 'ng-motion';",
-    "import type { Transition } from 'ng-motion';",
+    "import { NgmMotionDirective, NgmPresenceDirective } from '@scripttype/ng-motion';",
+    "import type { Transition } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmPresenceDirective],',
@@ -731,7 +731,7 @@ export class PresencePage {
 
   readonly useIsPresentCode = [
     "import { Component, computed } from '@angular/core';",
-    "import { NgmMotionDirective, useIsPresent } from 'ng-motion';",
+    "import { NgmMotionDirective, useIsPresent } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -751,7 +751,7 @@ export class PresencePage {
 
   readonly usePresenceCode = [
     "import { Component, effect } from '@angular/core';",
-    "import { usePresence } from 'ng-motion';",
+    "import { usePresence } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     "  template: `<canvas #canvas></canvas>`,",
@@ -778,7 +778,7 @@ export class PresencePage {
 
   readonly usePresenceListCode = [
     "import { signal } from '@angular/core';",
-    "import { usePresenceList } from 'ng-motion';",
+    "import { usePresenceList } from '@scripttype/ng-motion';",
     '',
     'interface Item { id: number; label: string; }',
     '',
@@ -799,7 +799,7 @@ export class PresencePage {
 
   readonly animatedListCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective, NgmPresenceDirective, usePresenceList } from 'ng-motion';",
+    "import { NgmMotionDirective, NgmPresenceDirective, usePresenceList } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmPresenceDirective],',

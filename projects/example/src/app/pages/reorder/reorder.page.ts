@@ -4,8 +4,8 @@ import {
   NgmPresenceDirective,
   NgmReorderGroupDirective,
   NgmReorderItemDirective,
-} from 'ng-motion';
-import type { Transition } from 'ng-motion';
+} from '@scripttype/ng-motion';
+import type { Transition } from '@scripttype/ng-motion';
 
 interface EmojiItem {
   id: string;

@@ -20,7 +20,7 @@ These are the inputs you will use most often:
 
 ```ts
 import { Component, signal, type WritableSignal } from '@angular/core';
-import { NgmMotionDirective, type Transition, type Variants } from 'ng-motion';
+import { NgmMotionDirective, type Transition, type Variants } from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,
@@ -197,7 +197,7 @@ The important detail is where the reactivity lives:
 
 ```ts
 import { Component, computed, signal, type Signal, type WritableSignal } from '@angular/core';
-import { NgmMotionDirective, type Transition, type Variants } from 'ng-motion';
+import { NgmMotionDirective, type Transition, type Variants } from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,
@@ -234,7 +234,7 @@ When a parent has `[animate]` and children have `[variants]` (without their own 
 
 ```ts
 import { Component, signal, type WritableSignal } from '@angular/core';
-import { NgmMotionDirective, type Transition, type Variants } from 'ng-motion';
+import { NgmMotionDirective, type Transition, type Variants } from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,
@@ -289,7 +289,7 @@ import {
   useTransform,
   type MotionStyle,
   type MotionValue,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,
@@ -309,7 +309,7 @@ The `ngmMotion` directive works on SVG elements just like HTML elements. Animate
 
 ```ts
 import { Component, signal } from '@angular/core';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 
 @Component({
   imports: [NgmMotionDirective],

@@ -8,7 +8,7 @@ import {
   useTransform,
   type MotionStyle,
   type SpringOptions,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -618,7 +618,7 @@ export class MotionValuesPage {
 
   // ── Code examples ──
   readonly useMotionValueCode = [
-    "import { useMotionValue, type MotionStyle } from 'ng-motion';",
+    "import { useMotionValue, type MotionStyle } from '@scripttype/ng-motion';",
     '',
     'export class MyComponent {',
     '  // Create a motion value with an initial value',
@@ -636,7 +636,7 @@ export class MotionValuesPage {
   ].join('\n');
 
   readonly useSpringCode = [
-    "import { useMotionValue, useSpring, type SpringOptions } from 'ng-motion';",
+    "import { useMotionValue, useSpring, type SpringOptions } from '@scripttype/ng-motion';",
     '',
     'export class SpringComponent {',
     '  readonly springOpts: SpringOptions = {',
@@ -656,7 +656,7 @@ export class MotionValuesPage {
   ].join('\n');
 
   readonly useTransformCode = [
-    "import { useMotionValue, useTransform } from 'ng-motion';",
+    "import { useMotionValue, useTransform } from '@scripttype/ng-motion';",
     '',
     'export class TransformComponent {',
     '  readonly x = useMotionValue(0);',
@@ -678,13 +678,13 @@ export class MotionValuesPage {
 
   readonly fullExampleCode = [
     "import { Component } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     'import {',
     '  useMotionValue,',
     '  useSpring,',
     '  useTransform,',
-    "} from 'ng-motion';",
-    "import type { MotionStyle, SpringOptions } from 'ng-motion';",
+    "} from '@scripttype/ng-motion';",
+    "import type { MotionStyle, SpringOptions } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  standalone: true,',
@@ -753,7 +753,7 @@ export class MotionValuesPage {
 
   // ── Hook mini-section code examples ──
   readonly useVelocityCode = [
-    "import { useMotionValue, useVelocity, useTransform } from 'ng-motion';",
+    "import { useMotionValue, useVelocity, useTransform } from '@scripttype/ng-motion';",
     '',
     'export class DragSkewComponent {',
     '  readonly x = useMotionValue(0);',
@@ -764,7 +764,7 @@ export class MotionValuesPage {
   ].join('\n');
 
   readonly useTimeCode = [
-    "import { useTime, useTransform } from 'ng-motion';",
+    "import { useTime, useTransform } from '@scripttype/ng-motion';",
     '',
     'export class SpinnerComponent {',
     '  readonly time = useTime(); // ms since mount, updates every frame',
@@ -774,8 +774,8 @@ export class MotionValuesPage {
   ].join('\n');
 
   readonly useMotionTemplateCode = [
-    "import { useMotionValue, useMotionTemplate } from 'ng-motion';",
-    "import type { MotionStyle } from 'ng-motion';",
+    "import { useMotionValue, useMotionTemplate } from '@scripttype/ng-motion';",
+    "import type { MotionStyle } from '@scripttype/ng-motion';",
     '',
     'export class HueShiftComponent {',
     '  readonly hue = useMotionValue(0);',
@@ -785,7 +785,7 @@ export class MotionValuesPage {
   ].join('\n');
 
   readonly useAnimationFrameCode = [
-    "import { useAnimationFrame } from 'ng-motion';",
+    "import { useAnimationFrame } from '@scripttype/ng-motion';",
     '',
     'export class ParticleComponent {',
     '  constructor() {',
@@ -799,7 +799,7 @@ export class MotionValuesPage {
 
   readonly useMotionValueEventCode = [
     "import { signal, inject, NgZone } from '@angular/core';",
-    "import { useMotionValue, useMotionValueEvent } from 'ng-motion';",
+    "import { useMotionValue, useMotionValueEvent } from '@scripttype/ng-motion';",
     '',
     'export class ThresholdComponent {',
     '  private readonly zone = inject(NgZone);',
@@ -828,8 +828,8 @@ export class MotionValuesPage {
   ].join('\n');
 
   readonly useWillChangeCode = [
-    "import { useMotionValue, useWillChange } from 'ng-motion';",
-    "import type { MotionStyle } from 'ng-motion';",
+    "import { useMotionValue, useWillChange } from '@scripttype/ng-motion';",
+    "import type { MotionStyle } from '@scripttype/ng-motion';",
     '',
     'export class OptimizedComponent {',
     '  readonly x = useMotionValue(0);',
@@ -842,7 +842,7 @@ export class MotionValuesPage {
 
   readonly useReducedMotionCode = [
     "import { computed } from '@angular/core';",
-    "import { useReducedMotion } from 'ng-motion';",
+    "import { useReducedMotion } from '@scripttype/ng-motion';",
     '',
     'export class AccessibleComponent {',
     '  readonly prefersReduced = useReducedMotion();',

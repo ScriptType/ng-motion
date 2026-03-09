@@ -6,7 +6,7 @@
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
     "paths": {
-      "ng-motion": ["./projects/ng-motion/src/public-api.ts", "./dist/ng-motion"],
+      "@scripttype/ng-motion": ["./projects/ng-motion/src/public-api.ts", "./dist/ng-motion"],
     },
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,

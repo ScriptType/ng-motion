@@ -6,8 +6,8 @@ The simplest way to animate elements out is to add `[exit]` directly on `ngmMoti
 
 ```ts
 import { Component, signal } from '@angular/core';
-import { NgmMotionDirective } from 'ng-motion';
-import type { Transition } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
+import type { Transition } from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,
@@ -59,8 +59,8 @@ Use `*ngmPresence` when you need the presence context hooks (`useIsPresent`, `us
 
 ```ts
 import { Component, signal } from '@angular/core';
-import { NgmMotionDirective, NgmPresenceDirective } from 'ng-motion';
-import type { Transition } from 'ng-motion';
+import { NgmMotionDirective, NgmPresenceDirective } from '@scripttype/ng-motion';
+import type { Transition } from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,
@@ -99,7 +99,7 @@ Use `useIsPresent()` when a child component needs to know whether it is entering
 
 ```ts
 import { type Signal } from '@angular/core';
-import { useIsPresent } from 'ng-motion';
+import { useIsPresent } from '@scripttype/ng-motion';
 
 const isPresent: Signal<boolean> = useIsPresent();
 ```
@@ -110,7 +110,7 @@ Use `usePresence()` when the child needs explicit control over when it is safe t
 
 ```ts
 import { type Signal } from '@angular/core';
-import { usePresence } from 'ng-motion';
+import { usePresence } from '@scripttype/ng-motion';
 
 const [isPresent, safeToRemove]: [Signal<boolean>, () => void] = usePresence();
 ```
@@ -123,7 +123,7 @@ Use `usePresenceList()` to derive stable layout metadata for presence-driven lis
 
 ```ts
 import { signal } from '@angular/core';
-import { usePresenceList } from 'ng-motion';
+import { usePresenceList } from '@scripttype/ng-motion';
 
 interface Item { id: number; label: string; }
 
@@ -152,7 +152,7 @@ import {
   NgmMotionDirective,
   NgmPresenceDirective,
   usePresenceList,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 interface Item {
   id: number;

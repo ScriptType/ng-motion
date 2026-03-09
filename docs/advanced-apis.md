@@ -31,7 +31,7 @@ Use them when you want explicit feature registration or lazy feature bundles. Th
 
 ```ts
 import { type ApplicationConfig } from '@angular/core';
-import { provideMotionFeatures, ngmAnimationFeatures } from 'ng-motion';
+import { provideMotionFeatures, ngmAnimationFeatures } from '@scripttype/ng-motion';
 
 export const appConfig: ApplicationConfig = {
   providers: [provideMotionFeatures(ngmAnimationFeatures)],

@@ -7,7 +7,7 @@ import {
   type Variants,
   type MotionValue,
   type ScopedAnimate,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 interface SpringPreset {
   label: string;

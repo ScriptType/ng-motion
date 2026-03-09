@@ -23,7 +23,7 @@ The project is still pre-1.0. The core API is already usable, but some advanced 
 
 ```ts
 import { Component, signal, type WritableSignal } from '@angular/core';
-import { NgmMotionDirective, type TargetAndTransition, type Transition } from 'ng-motion';
+import { NgmMotionDirective, type TargetAndTransition, type Transition } from '@scripttype/ng-motion';
 
 @Component({
   selector: 'app-demo',

@@ -7,7 +7,7 @@ import {
   useTransform,
   useVelocity,
   type MotionValue,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 import { CosmicShuffleGridComponent } from '../components/cosmic-shuffle-grid.component';
 import { DemoReplayComponent } from '../components/demo-replay.component';
 
@@ -663,13 +663,13 @@ export class HomePage {
     {
       number: 1,
       title: 'Install',
-      code: 'npm install ng-motion motion-dom motion-utils',
+      code: 'npm install @scripttype/ng-motion motion-dom motion-utils',
     },
     {
       number: 2,
       title: 'Import the directive',
       code: [
-        "import { NgmMotionDirective } from 'ng-motion';",
+        "import { NgmMotionDirective } from '@scripttype/ng-motion';",
         '',
         '@Component({',
         '  imports: [NgmMotionDirective],',

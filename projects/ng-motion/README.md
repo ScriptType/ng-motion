@@ -13,14 +13,14 @@ The project is pre-1.0. Core APIs are usable today, while some advanced areas ma
 ## Install
 
 ```bash
-npm install ng-motion motion-dom motion-utils
+npm install @scripttype/ng-motion motion-dom motion-utils
 ```
 
 ## Quick Example
 
 ```ts
 import { Component, signal, type WritableSignal } from '@angular/core';
-import { NgmMotionDirective, type TargetAndTransition, type Transition } from 'ng-motion';
+import { NgmMotionDirective, type TargetAndTransition, type Transition } from '@scripttype/ng-motion';
 
 @Component({
   selector: 'app-demo',

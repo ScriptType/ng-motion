@@ -13,7 +13,7 @@ The docs assume a standalone Angular application created with the Angular CLI.
 ## Install
 
 ```bash
-npm install ng-motion motion-dom motion-utils
+npm install @scripttype/ng-motion motion-dom motion-utils
 ```
 
 ## Optional Global Defaults
@@ -22,7 +22,7 @@ Use `provideMotionConfig()` to define app-wide motion defaults.
 
 ```ts
 import { type ApplicationConfig } from '@angular/core';
-import { provideMotionConfig, type MotionConfig } from 'ng-motion';
+import { provideMotionConfig, type MotionConfig } from '@scripttype/ng-motion';
 
 const motionConfig: MotionConfig = {
   transition: { duration: 0.4 },
@@ -38,7 +38,7 @@ export const appConfig: ApplicationConfig = {
 
 ```ts
 import { Component, signal, type WritableSignal } from '@angular/core';
-import { NgmMotionDirective, type TargetAndTransition, type Transition } from 'ng-motion';
+import { NgmMotionDirective, type TargetAndTransition, type Transition } from '@scripttype/ng-motion';
 
 @Component({
   selector: 'app-card',

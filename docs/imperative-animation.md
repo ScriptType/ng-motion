@@ -9,7 +9,7 @@ Use the imperative APIs when the animation is driven by a command, a sequence, o
 ### Animate a MotionValue
 
 ```ts
-import { animate, useMotionValue, type MotionValue } from 'ng-motion';
+import { animate, useMotionValue, type MotionValue } from '@scripttype/ng-motion';
 
 const opacity: MotionValue<number> = useMotionValue(0);
 animate(opacity, 1, { duration: 0.3 });
@@ -24,7 +24,7 @@ animate('.card', { opacity: [0, 1], y: [24, 0] }, { duration: 0.5 });
 ### Animate a sequence
 
 ```ts
-import { animate, type AnimationSequence } from 'ng-motion';
+import { animate, type AnimationSequence } from '@scripttype/ng-motion';
 
 const sequence: AnimationSequence = [
   ['.badge', { scale: [1, 1.2, 1] }, { duration: 0.3 }],
@@ -42,7 +42,7 @@ Use `useAnimate()` when animations should be scoped to a specific container and 
 
 ```ts
 import { afterNextRender, Component, ElementRef, viewChild } from '@angular/core';
-import { useAnimate, type ScopedAnimate } from 'ng-motion';
+import { useAnimate, type ScopedAnimate } from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,

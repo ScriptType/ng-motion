@@ -13,7 +13,7 @@ import {
   NgmReorderGroupDirective,
   NgmReorderItemDirective,
   type Transition,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 interface TodoItem {
   id: string;

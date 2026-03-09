@@ -1,6 +1,6 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -559,7 +559,7 @@ export class UseAnimatePage {
   // ── Code examples ──
 
   readonly animateElementCode = [
-    "import { animate } from 'ng-motion';",
+    "import { animate } from '@scripttype/ng-motion';",
     '',
     '// Animate by CSS selector',
     "animate('.card', { opacity: [0, 1], y: [24, 0] }, { duration: 0.5 });",
@@ -576,7 +576,7 @@ export class UseAnimatePage {
   ].join('\n');
 
   readonly animateMotionValueCode = [
-    "import { animate, useMotionValue, useTransform } from 'ng-motion';",
+    "import { animate, useMotionValue, useTransform } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -597,7 +597,7 @@ export class UseAnimatePage {
   ].join('\n');
 
   readonly sequenceCode = [
-    "import { animate, type AnimationSequence } from 'ng-motion';",
+    "import { animate, type AnimationSequence } from '@scripttype/ng-motion';",
     '',
     'async playEntrance(): Promise<void> {',
     '  const sequence: AnimationSequence = [',
@@ -620,7 +620,7 @@ export class UseAnimatePage {
   ].join('\n');
 
   readonly useAnimateMinimalCode = [
-    "import { useAnimate } from 'ng-motion';",
+    "import { useAnimate } from '@scripttype/ng-motion';",
     '',
     '// Minimal useAnimate example',
     'export class MyComponent {',
@@ -634,7 +634,7 @@ export class UseAnimatePage {
 
   readonly useAnimateCode = [
     "import { afterNextRender, Component, ElementRef, viewChild } from '@angular/core';",
-    "import { useAnimate, type ScopedAnimate } from 'ng-motion';",
+    "import { useAnimate, type ScopedAnimate } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  template: `',
@@ -673,7 +673,7 @@ export class UseAnimatePage {
   ].join('\n');
 
   readonly staggerCode = [
-    "import { animate, stagger } from 'ng-motion';",
+    "import { animate, stagger } from '@scripttype/ng-motion';",
     '',
     '// Stagger by 80ms between each element',
     "animate('.card', { opacity: [0, 1], y: [20, 0] }, {",
@@ -700,7 +700,7 @@ export class UseAnimatePage {
   ].join('\n');
 
   readonly playbackCode = [
-    "import { animate } from 'ng-motion';",
+    "import { animate } from '@scripttype/ng-motion';",
     '',
     '// Get playback controls',
     "const controls = animate('.box', { x: 200 }, { duration: 2 });",

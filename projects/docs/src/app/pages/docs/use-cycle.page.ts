@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective, useCycle } from 'ng-motion';
+import { NgmMotionDirective, useCycle } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -313,7 +313,7 @@ export class UseCyclePage {
   // ── Code examples ──
 
   readonly basicUsageCode = [
-    "import { useCycle } from 'ng-motion';",
+    "import { useCycle } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  template: `',
@@ -333,7 +333,7 @@ export class UseCyclePage {
   ].join('\n');
 
   readonly colorCycleCode = [
-    "import { useCycle } from 'ng-motion';",
+    "import { useCycle } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  template: `',
@@ -356,7 +356,7 @@ export class UseCyclePage {
   ].join('\n');
 
   readonly statesCycleCode = [
-    "import { useCycle } from 'ng-motion';",
+    "import { useCycle } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  template: `',
@@ -395,7 +395,7 @@ export class UseCyclePage {
   ].join('\n');
 
   readonly injectionContextCode = [
-    "import { useCycle } from 'ng-motion';",
+    "import { useCycle } from '@scripttype/ng-motion';",
     '',
     '@Component({ ... })',
     'export class MyComponent {',

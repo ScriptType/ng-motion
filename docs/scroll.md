@@ -19,7 +19,7 @@ import {
   type MotionValue,
   type ScrollMotionValues,
   type SpringOptions,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,
@@ -63,7 +63,7 @@ The easiest copyable pattern is a directive or component that can inject the hos
 
 ```ts
 import { Directive, ElementRef, inject } from '@angular/core';
-import { useScroll, type MotionValue, type ScrollMotionValues } from 'ng-motion';
+import { useScroll, type MotionValue, type ScrollMotionValues } from '@scripttype/ng-motion';
 
 @Directive({
   selector: '[appTrackScrollSection]',
@@ -93,7 +93,7 @@ If you already have a scrolling container reference, pass it the same way throug
 - `ScrollOffset.All` — fires when the target is fully within the viewport
 
 ```ts
-import { useScroll, ScrollOffset } from 'ng-motion';
+import { useScroll, ScrollOffset } from '@scripttype/ng-motion';
 
 const { scrollYProgress } = useScroll({
   target: this.element,
@@ -109,7 +109,7 @@ Use `useInView()` when Angular state should respond to visibility.
 
 ```ts
 import { Directive, ElementRef, inject, type Signal } from '@angular/core';
-import { useInView } from 'ng-motion';
+import { useInView } from '@scripttype/ng-motion';
 
 @Directive({
   selector: '[appTrackInView]',

@@ -5,7 +5,7 @@ import {
   useMotionValue,
   useTransform,
   type MotionValue,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
@@ -385,7 +385,7 @@ export class UseTransformPage {
   // ── Code snippets ──
 
   readonly rangeMappingCode = [
-    "import { useMotionValue, useTransform, type MotionValue } from 'ng-motion';",
+    "import { useMotionValue, useTransform, type MotionValue } from '@scripttype/ng-motion';",
     '',
     '// Source value — bound to drag via [style]',
     'readonly x: MotionValue<number> = useMotionValue(0);',
@@ -455,7 +455,7 @@ export class UseTransformPage {
   ].join('\n');
 
   readonly transformOptionsCode = [
-    "import { useMotionValue, useTransform, type MotionValue } from 'ng-motion';",
+    "import { useMotionValue, useTransform, type MotionValue } from '@scripttype/ng-motion';",
     '',
     'readonly x: MotionValue<number> = useMotionValue(0);',
     '',
@@ -490,7 +490,7 @@ export class UseTransformPage {
 
   readonly injectionContextCode = [
     "import { Component } from '@angular/core';",
-    "import { useMotionValue, useTransform } from 'ng-motion';",
+    "import { useMotionValue, useTransform } from '@scripttype/ng-motion';",
     '',
     '@Component({ ... })',
     'export class MyComponent {',

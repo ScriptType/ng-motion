@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 import { DemoReplayComponent } from '../../components/demo-replay.component';
 
@@ -231,11 +231,11 @@ import { DemoReplayComponent } from '../../components/demo-replay.component';
   `,
 })
 export class GettingStartedPage {
-  readonly installCode = 'npm install ng-motion motion-dom motion-utils';
+  readonly installCode = 'npm install @scripttype/ng-motion motion-dom motion-utils';
 
   readonly firstAnimationCode = [
     "import { Component } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',

@@ -1,5 +1,5 @@
 import { Component, signal } from '@angular/core';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 
 interface CosmicBody {
   readonly id: string;

@@ -5,7 +5,7 @@ import {
   useSpring,
   useTransform,
   type ViewportOptions,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 interface RevealCard {
   icon: string;

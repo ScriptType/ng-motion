@@ -4,8 +4,8 @@ import {
   NgmMotionDirective,
   NgmReorderGroupDirective,
   NgmReorderItemDirective,
-} from 'ng-motion';
-import type { Transition } from 'ng-motion';
+} from '@scripttype/ng-motion';
+import type { Transition } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 interface ReorderItem {
@@ -532,7 +532,7 @@ export class DragPage {
   ].join('\n');
 
   readonly reorderCode = [
-    "import { NgmMotionDirective, NgmReorderGroupDirective, NgmReorderItemDirective } from 'ng-motion';",
+    "import { NgmMotionDirective, NgmReorderGroupDirective, NgmReorderItemDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmReorderGroupDirective, NgmReorderItemDirective],',

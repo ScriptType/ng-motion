@@ -19,7 +19,7 @@ Angular signals and MotionValues serve different purposes. Use the right tool fo
 Creates a mutable value that drives animation and style. Call `.set()` to update it — the DOM updates on the next animation frame with zero change detection cycles.
 
 ```ts
-import { useMotionValue, type MotionStyle } from 'ng-motion';
+import { useMotionValue, type MotionStyle } from '@scripttype/ng-motion';
 
 export class MyComponent {
   // Create a motion value with an initial value
@@ -41,7 +41,7 @@ export class MyComponent {
 Wraps a value or another MotionValue with spring physics. The returned MotionValue follows its source with natural, springy easing. Configure `stiffness`, `damping`, and `mass` to tune the feel.
 
 ```ts
-import { useMotionValue, useSpring, type SpringOptions } from 'ng-motion';
+import { useMotionValue, useSpring, type SpringOptions } from '@scripttype/ng-motion';
 
 export class SpringComponent {
   readonly springOpts: SpringOptions = {
@@ -65,7 +65,7 @@ export class SpringComponent {
 Creates a derived MotionValue that updates whenever its source changes. Three signatures cover the common cases:
 
 ```ts
-import { useMotionValue, useTransform } from 'ng-motion';
+import { useMotionValue, useTransform } from '@scripttype/ng-motion';
 
 export class TransformComponent {
   readonly x = useMotionValue(0);
@@ -90,7 +90,7 @@ export class TransformComponent {
 Track the instantaneous velocity of a MotionValue in px/s. Useful for skew-on-drag, trail effects, and velocity-dependent visuals.
 
 ```ts
-import { useMotionValue, useVelocity, useTransform } from 'ng-motion';
+import { useMotionValue, useVelocity, useTransform } from '@scripttype/ng-motion';
 
 export class DragSkewComponent {
   readonly x = useMotionValue(0);
@@ -105,8 +105,8 @@ export class DragSkewComponent {
 Build reactive CSS strings from MotionValues using a tagged template literal. The result is a `MotionValue<string>` that updates whenever any interpolated value changes.
 
 ```ts
-import { useMotionValue, useMotionTemplate } from 'ng-motion';
-import type { MotionStyle } from 'ng-motion';
+import { useMotionValue, useMotionTemplate } from '@scripttype/ng-motion';
+import type { MotionStyle } from '@scripttype/ng-motion';
 
 export class HueShiftComponent {
   readonly hue = useMotionValue(0);
@@ -120,7 +120,7 @@ export class HueShiftComponent {
 Returns a MotionValue that updates every frame with milliseconds since mount. Use for continuous rotation, pulsing, or any time-based effect without manual requestAnimationFrame.
 
 ```ts
-import { useTime, useTransform } from 'ng-motion';
+import { useTime, useTransform } from '@scripttype/ng-motion';
 
 export class SpinnerComponent {
   readonly time = useTime(); // ms since mount, updates every frame
@@ -134,7 +134,7 @@ export class SpinnerComponent {
 Register a per-frame callback with `(time, delta)` arguments. Automatically cleaned up when the component is destroyed. Use for physics simulations, particles, or manual animation loops.
 
 ```ts
-import { useAnimationFrame } from 'ng-motion';
+import { useAnimationFrame } from '@scripttype/ng-motion';
 
 export class ParticleComponent {
   constructor() {
@@ -152,7 +152,7 @@ Subscribe to MotionValue lifecycle events outside Angular's zone. Events: `'chan
 
 ```ts
 import { signal, inject, NgZone } from '@angular/core';
-import { useMotionValue, useMotionValueEvent } from 'ng-motion';
+import { useMotionValue, useMotionValueEvent } from '@scripttype/ng-motion';
 
 export class ThresholdComponent {
   private readonly zone = inject(NgZone);
@@ -190,7 +190,7 @@ Returns a `Signal<boolean>` that tracks the `prefers-reduced-motion` media query
 
 ```ts
 import { computed } from '@angular/core';
-import { useReducedMotion } from 'ng-motion';
+import { useReducedMotion } from '@scripttype/ng-motion';
 
 export class AccessibleComponent {
   readonly prefersReduced = useReducedMotion();
@@ -206,8 +206,8 @@ export class AccessibleComponent {
 Creates a MotionValue that automatically manages the `will-change` CSS property during animations, providing GPU compositing hints for smoother performance.
 
 ```ts
-import { useMotionValue, useWillChange } from 'ng-motion';
-import type { MotionStyle } from 'ng-motion';
+import { useMotionValue, useWillChange } from '@scripttype/ng-motion';
+import type { MotionStyle } from '@scripttype/ng-motion';
 
 export class OptimizedComponent {
   readonly x = useMotionValue(0);
@@ -224,13 +224,13 @@ A complete example combining `useMotionValue`, `useSpring`, and `useTransform` t
 
 ```ts
 import { Component } from '@angular/core';
-import { NgmMotionDirective } from 'ng-motion';
+import { NgmMotionDirective } from '@scripttype/ng-motion';
 import {
   useMotionValue,
   useSpring,
   useTransform,
-} from 'ng-motion';
-import type { MotionStyle, SpringOptions } from 'ng-motion';
+} from '@scripttype/ng-motion';
+import type { MotionStyle, SpringOptions } from '@scripttype/ng-motion';
 
 @Component({
   standalone: true,

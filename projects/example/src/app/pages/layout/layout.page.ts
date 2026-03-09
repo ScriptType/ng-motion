@@ -1,6 +1,6 @@
 import { Component, computed, signal } from '@angular/core';
-import { NgmMotionDirective, NgmLayoutGroupDirective } from 'ng-motion';
-import type { Transition, Variants } from 'ng-motion';
+import { NgmMotionDirective, NgmLayoutGroupDirective } from '@scripttype/ng-motion';
+import type { Transition, Variants } from '@scripttype/ng-motion';
 
 interface ShuffleItem {
   id: number;

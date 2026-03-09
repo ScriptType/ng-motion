@@ -10,7 +10,7 @@ import {
   useReducedMotion,
   useAnimationFrame,
   type MotionValue,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 @Component({
   selector: 'app-values-page',

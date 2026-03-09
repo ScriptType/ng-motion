@@ -1,5 +1,5 @@
 import { Component, signal, effect, viewChild, DestroyRef, inject, ElementRef } from '@angular/core';
-import { NgmMotionDirective, NgmPresenceDirective, NgmReorderGroupDirective, NgmReorderItemDirective, usePresenceList, useMotionValue, useSpring, useTransform, type MotionStyle } from 'ng-motion';
+import { NgmMotionDirective, NgmPresenceDirective, NgmReorderGroupDirective, NgmReorderItemDirective, usePresenceList, useMotionValue, useSpring, useTransform, type MotionStyle } from '@scripttype/ng-motion';
 import { RouterLink } from '@angular/router';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
@@ -773,7 +773,7 @@ export class RecipesPage {
   // ── Code examples ──
   readonly notificationStackCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective, NgmPresenceDirective, usePresenceList } from 'ng-motion';",
+    "import { NgmMotionDirective, NgmPresenceDirective, usePresenceList } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmPresenceDirective],',
@@ -838,7 +838,7 @@ export class RecipesPage {
 
   readonly expandableCardCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -892,7 +892,7 @@ export class RecipesPage {
     '  NgmMotionDirective,',
     '  useMotionValue, useSpring, useTransform,',
     '  type MotionStyle,',
-    "} from 'ng-motion';",
+    "} from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -976,7 +976,7 @@ export class RecipesPage {
 
   readonly animatedTabsCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective } from 'ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective],',
@@ -1022,7 +1022,7 @@ export class RecipesPage {
 
   readonly modalDialogCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective, NgmPresenceDirective } from 'ng-motion';",
+    "import { NgmMotionDirective, NgmPresenceDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmPresenceDirective],',
@@ -1060,7 +1060,7 @@ export class RecipesPage {
 
   readonly dragReorderCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective, NgmReorderGroupDirective, NgmReorderItemDirective } from 'ng-motion';",
+    "import { NgmMotionDirective, NgmReorderGroupDirective, NgmReorderItemDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmReorderGroupDirective, NgmReorderItemDirective],',

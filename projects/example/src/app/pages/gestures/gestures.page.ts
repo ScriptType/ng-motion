@@ -5,8 +5,8 @@ import {
   useVelocity,
   useTransform,
   useMotionTemplate,
-} from 'ng-motion';
-import type { MotionValue } from 'ng-motion';
+} from '@scripttype/ng-motion';
+import type { MotionValue } from '@scripttype/ng-motion';
 
 @Component({
   selector: 'app-gestures-page',

@@ -7,7 +7,7 @@ import {
   useScroll,
   useTransform,
   type MotionValue,
-} from 'ng-motion';
+} from '@scripttype/ng-motion';
 
 interface StarData {
   x: number;

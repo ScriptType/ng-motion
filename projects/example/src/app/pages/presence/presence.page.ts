@@ -1,6 +1,6 @@
 import { Component, signal, computed, type OnDestroy } from '@angular/core';
-import { NgmMotionDirective, NgmPresenceDirective } from 'ng-motion';
-import type { TargetAndTransition, Transition } from 'ng-motion';
+import { NgmMotionDirective, NgmPresenceDirective } from '@scripttype/ng-motion';
+import type { TargetAndTransition, Transition } from '@scripttype/ng-motion';
 
 type SlideDirection = 'left' | 'right' | 'up' | 'down';
 
