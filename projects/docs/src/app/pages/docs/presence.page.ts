@@ -23,14 +23,36 @@ interface ListItem {
       >
         <h1 class="font-display font-bold text-4xl mb-4">Presence & Exit</h1>
         <p class="text-lg text-secondary mb-12 leading-relaxed">
-          In Angular, removing an element from the DOM is instant. There is no built-in
-          way to let it animate out first. The
+          Add
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >[exit]</code
+          >
+          to any
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >ngmMotion</code
+          >
+          element and exit animations work automatically with
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;if</code
+          >,
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;for</code
+          >, and
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;switch</code
+          >. When Angular removes an element, ng-motion creates a clone
+          and plays the exit animation before cleaning up. For coordinated exits
+          and presence hooks,
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >*ngmPresence</code
           >
-          structural directive solves this: it keeps the element mounted while an exit
-          animation plays, then removes it only after the animation completes.
+          keeps the original element mounted instead.
         </p>
       </div>
 
@@ -44,26 +66,26 @@ interface ListItem {
       >
         <h2 class="font-display font-semibold text-2xl mb-4">Basic exit animation</h2>
         <p class="text-secondary mb-6">
-          Wrap any element with
+          Add an
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-            >*ngmPresence</code
+            >[exit]</code
           >
-          and define an
-          <code
-            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-            >exit</code
-          >
-          state on the inner
+          input to your
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >ngmMotion</code
           >
-          directive. When the condition becomes
+          element inside
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;if</code
+          >. When the condition becomes
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >false</code
-          >, the exit animation runs before the element is removed.
+          >, ng-motion clones the element and plays the exit animation
+          before removing it. No wrapper needed.
         </p>
 
         <app-code-block [code]="basicExitCode" lang="typescript" filename="presence-toggle.component.ts" class="mb-6" />
@@ -84,17 +106,18 @@ interface ListItem {
           </button>
 
           <div class="h-20 flex items-center justify-center">
-            <article
-              *ngmPresence="visible()"
-              ngmMotion
-              [initial]="{ opacity: 0, scale: 0.92, y: 12 }"
-              [animate]="{ opacity: 1, scale: 1, y: 0 }"
-              [exit]="{ opacity: 0, scale: 0.92, y: -12 }"
-              [transition]="{ type: 'spring', stiffness: 280, damping: 24 }"
-              class="px-8 py-4 rounded-xl bg-gradient-to-br from-accent/15 to-accent-purple/15 border border-accent/20 text-lg"
-            >
-              I animate in and out.
-            </article>
+            @if (visible()) {
+              <article
+                ngmMotion
+                [initial]="{ opacity: 0, scale: 0.92, y: 12 }"
+                [animate]="{ opacity: 1, scale: 1, y: 0 }"
+                [exit]="{ opacity: 0, scale: 0.92, y: -12 }"
+                [transition]="{ type: 'spring', stiffness: 280, damping: 24 }"
+                class="px-8 py-4 rounded-xl bg-gradient-to-br from-accent/15 to-accent-purple/15 border border-accent/20 text-lg"
+              >
+                I animate in and out.
+              </article>
+            }
           </div>
         </div>
       </section>
@@ -109,16 +132,24 @@ interface ListItem {
       >
         <h2 class="font-display font-semibold text-2xl mb-4">How it works</h2>
         <p class="text-secondary mb-6">
-          When the presence condition changes from
+          When Angular destroys an element that has an
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-            >true</code
+            >[exit]</code
           >
-          to
+          input (via
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-            >false</code
-          >, four things happen in sequence:
+            >&#64;if</code
+          >,
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;for</code
+          >, or
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;switch</code
+          >), four things happen:
         </p>
 
         <div class="rounded-xl border border-border bg-surface/30 p-6 space-y-4">
@@ -129,7 +160,12 @@ interface ListItem {
               <span class="text-xs font-mono text-accent font-bold">1</span>
             </div>
             <p class="text-secondary">
-              The child view stays mounted in the DOM &mdash; Angular does not remove it yet.
+              Angular removes the original element from the DOM (normal
+              <code
+                class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+                >&#64;if</code
+              >
+              behavior).
             </p>
           </div>
           <div class="flex items-start gap-4">
@@ -139,16 +175,13 @@ interface ListItem {
               <span class="text-xs font-mono text-accent font-bold">2</span>
             </div>
             <p class="text-secondary">
-              The presence context switches
+              The
               <code
                 class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-                >isPresent</code
+                >ngmMotion</code
               >
-              to
-              <code
-                class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-                >false</code
-              >.
+              directive intercepts destruction and creates an in-flow clone at the
+              original position.
             </p>
           </div>
           <div class="flex items-start gap-4">
@@ -161,14 +194,9 @@ interface ListItem {
               The
               <code
                 class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-                >ngmMotion</code
-              >
-              directive detects the change and runs the
-              <code
-                class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                 >exit</code
               >
-              animation.
+              animation plays on the clone.
             </p>
           </div>
           <div class="flex items-start gap-4">
@@ -178,9 +206,160 @@ interface ListItem {
               <span class="text-xs font-mono text-accent font-bold">4</span>
             </div>
             <p class="text-secondary">
-              Only after the exit animation completes is the view removed from the DOM.
+              Once the animation completes, the clone is removed from the DOM.
             </p>
           </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-surface/30 p-5 mt-6 text-sm text-secondary">
+          <strong class="text-primary">Auto-derive initial from exit</strong> &mdash;
+          When
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">[exit]</code>
+          is set but
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">[initial]</code>
+          is not, the exit values become the initial state automatically. This means
+          you only need
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">[animate]</code>
+          +
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">[exit]</code>
+          for symmetric enter/exit animations. Set
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">[initial]</code>
+          explicitly when you want different enter and exit directions (e.g. slide in
+          from below, exit upward).
+        </div>
+      </section>
+
+      <!-- List exit animation -->
+      <section
+        ngmMotion
+        [initial]="{ opacity: 0, y: 20 }"
+        [animate]="{ opacity: 1, y: 0 }"
+        [transition]="{ delay: 0.2 }"
+        class="mb-12"
+      >
+        <h2 class="font-display font-semibold text-2xl mb-4">List exit animation</h2>
+        <p class="text-secondary mb-6">
+          Exit animations work the same way in
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;for</code
+          >
+          loops. Remove an item from the array and each removed element gets its
+          own exit clone that animates independently. No wrapper or helper needed.
+        </p>
+
+        <app-code-block [code]="simpleForExitCode" lang="typescript" filename="simple-list.component.ts" class="mb-6" />
+
+        <!-- Live @for demo without *ngmPresence -->
+        <div
+          class="rounded-xl border border-border p-10 bg-surface/30 flex flex-col items-center gap-6"
+        >
+          <div class="flex gap-3">
+            <button
+              ngmMotion
+              [whileHover]="{ scale: 1.05 }"
+              [whileTap]="{ scale: 0.95 }"
+              [transition]="{ type: 'spring', stiffness: 400, damping: 17 }"
+              (click)="addItem()"
+              type="button"
+              class="px-5 py-2 rounded-lg bg-accent/15 border border-accent/30 text-accent font-medium cursor-pointer select-none text-sm"
+            >
+              Add item
+            </button>
+            <button
+              ngmMotion
+              [whileHover]="{ scale: 1.05 }"
+              [whileTap]="{ scale: 0.95 }"
+              [transition]="{ type: 'spring', stiffness: 400, damping: 17 }"
+              (click)="removeRandom()"
+              [disabled]="items().length === 0"
+              [class.opacity-40]="items().length === 0"
+              [class.pointer-events-none]="items().length === 0"
+              type="button"
+              class="px-5 py-2 rounded-lg bg-accent-pink/15 border border-accent-pink/30 text-accent-pink font-medium cursor-pointer select-none text-sm disabled:cursor-not-allowed"
+            >
+              Remove random
+            </button>
+          </div>
+
+          <div class="flex w-full max-w-sm flex-col rounded-2xl border border-border bg-elevated/20 p-3">
+            @for (item of items(); track item.id; let last = $last) {
+              <div
+                ngmMotion
+                [initial]="{ opacity: 0, x: -20, height: 0, marginBottom: 0 }"
+                [animate]="{ opacity: 1, x: 0, height: 56, marginBottom: last ? 0 : 12 }"
+                [exit]="{ opacity: 0, x: 20, height: 0, marginBottom: 0 }"
+                [transition]="{ type: 'spring', stiffness: 300, damping: 25 }"
+                class="overflow-hidden"
+              >
+                <div
+                  class="flex h-14 items-center justify-between px-5 rounded-xl bg-gradient-to-r from-accent/10 to-accent-purple/10 border border-accent/20"
+                >
+                  <span class="text-sm">{{ item.label }}</span>
+                  <button
+                    (click)="removeItem(item.id)"
+                    type="button"
+                    class="text-muted hover:text-accent-pink transition-colors text-xs font-mono cursor-pointer"
+                  >
+                    remove
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+
+      <!-- *ngmPresence (advanced) -->
+      <section
+        ngmMotion
+        [initial]="{ opacity: 0, y: 20 }"
+        [animate]="{ opacity: 1, y: 0 }"
+        [transition]="{ delay: 0.25 }"
+        class="mb-12"
+      >
+        <h2 class="font-display font-semibold text-2xl mb-4">*ngmPresence (advanced)</h2>
+        <p class="text-secondary mb-6">
+          For most cases,
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >&#64;if</code
+          >
+          +
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >[exit]</code
+          >
+          is all you need. But when you need coordinated exits, presence
+          hooks, or animated lists with immediate UI reactions, use the
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >*ngmPresence</code
+          >
+          structural directive. Instead of cloning, it keeps the original
+          element mounted while the exit animation plays, then removes it
+          after completion.
+        </p>
+
+        <app-code-block [code]="ngmPresenceCode" lang="typescript" filename="presence-toggle.component.ts" class="mb-6" />
+
+        <div class="rounded-xl border border-border bg-surface/30 p-5 text-sm text-secondary">
+          <strong class="text-primary">When to use *ngmPresence</strong> &mdash;
+          Prefer
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">*ngmPresence</code>
+          when you need
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">useIsPresent()</code>,
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">usePresence()</code>,
+          or
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">usePresenceList()</code>
+          hooks, or when you need to coordinate multi-child exit animations.
+          For simple show/hide with
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">&#64;if</code>
+          or item removal with
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">&#64;for</code>,
+          just use
+          <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">[exit]</code>
+          directly.
         </div>
       </section>
 
@@ -356,7 +535,7 @@ interface ListItem {
               [whileHover]="{ scale: 1.05 }"
               [whileTap]="{ scale: 0.95 }"
               [transition]="{ type: 'spring', stiffness: 400, damping: 17 }"
-              (click)="addItem()"
+              (click)="addPresenceItem()"
               type="button"
               class="px-5 py-2 rounded-lg bg-accent/15 border border-accent/30 text-accent font-medium cursor-pointer select-none text-sm"
             >
@@ -367,7 +546,7 @@ interface ListItem {
               [whileHover]="{ scale: 1.05 }"
               [whileTap]="{ scale: 0.95 }"
               [transition]="{ type: 'spring', stiffness: 400, damping: 17 }"
-              (click)="removeRandom()"
+              (click)="removePresenceRandom()"
               [disabled]="visibleIds.length === 0"
               [class.opacity-40]="visibleIds.length === 0"
               [class.pointer-events-none]="visibleIds.length === 0"
@@ -379,7 +558,7 @@ interface ListItem {
           </div>
 
           <div class="flex w-full max-w-sm flex-col rounded-2xl border border-border bg-elevated/20 p-3">
-            @for (item of items(); track item.id) {
+            @for (item of presenceItems(); track item.id) {
               <div
                 *ngmPresence="visibleById[item.id] ?? false"
                 ngmMotion
@@ -399,7 +578,7 @@ interface ListItem {
                 >
                   <span class="text-sm">{{ item.label }}</span>
                   <button
-                    (click)="removeItem(item.id)"
+                    (click)="removePresenceItem(item.id)"
                     type="button"
                     class="text-muted hover:text-accent-pink transition-colors text-xs font-mono cursor-pointer"
                   >
@@ -424,7 +603,7 @@ interface ListItem {
         <p class="text-secondary mb-6">
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-            >*ngmPresence</code
+            >[exit]</code
           >
           works anywhere Angular conditionally renders content. Here are a few
           patterns you will use often:
@@ -478,12 +657,17 @@ interface ListItem {
             <div>
               <p class="text-primary font-medium mb-1">Routed Content</p>
               <p class="text-secondary text-sm">
-                Animate route transitions by wrapping the routed component in
+                Animate route transitions with
                 <code
                   class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-                  >*ngmPresence</code
+                  >[exit]</code
                 >
-                and keying on the active route.
+                on the routed component, or use
+                <code
+                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+                  >withMotionTransitions()</code
+                >
+                for declarative route transitions.
               </p>
             </div>
           </div>
@@ -492,17 +676,27 @@ interface ListItem {
             <div>
               <p class="text-primary font-medium mb-1">Removable List Items</p>
               <p class="text-secondary text-sm">
-                Combine
+                Add
+                <code
+                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+                  >[exit]</code
+                >
+                to items in
                 <code
                   class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                   >&#64;for</code
                 >
-                with
+                &mdash; each item animates out independently when removed from the array.
+                For immediate UI reactions (disable buttons, adjust spacing), use
+                <code
+                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+                  >usePresenceList</code
+                >
+                +
                 <code
                   class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                   >*ngmPresence</code
-                >
-                to animate individual items as they leave a list.
+                >.
               </p>
             </div>
           </div>
@@ -524,30 +718,33 @@ interface ListItem {
             <div class="w-2 h-2 rounded-full bg-accent flex-shrink-0 mt-2"></div>
             <div>
               <p class="text-primary font-medium mb-1">
-                Always pair
                 <code
                   class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-                  >exit</code
+                  >[exit]</code
                 >
-                with
+                works with
+                <code
+                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+                  >&#64;if</code
+                >,
+                <code
+                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+                  >&#64;for</code
+                >, and
+                <code
+                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+                  >&#64;switch</code
+                >
+                out of the box
+              </p>
+              <p class="text-secondary text-sm">
+                No wrapper needed. When Angular removes the element, the directive
+                clones it and plays the exit animation automatically. Use
                 <code
                   class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                   >*ngmPresence</code
                 >
-              </p>
-              <p class="text-secondary text-sm">
-                The
-                <code
-                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-                  >exit</code
-                >
-                input on
-                <code
-                  class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
-                  >ngmMotion</code
-                >
-                does nothing on its own. Without a presence context to delay removal,
-                Angular destroys the element instantly and the exit animation never plays.
+                only when you need presence hooks or coordinated multi-child exits.
               </p>
             </div>
           </div>
@@ -648,13 +845,38 @@ export class PresencePage {
   }
 
   readonly visible = signal(true);
+
+  // @for + [exit] demo (direct removal, no *ngmPresence)
   readonly items = signal<ListItem[]>([
     { id: nextId++, label: 'First item' },
     { id: nextId++, label: 'Second item' },
     { id: nextId++, label: 'Third item' },
   ]);
+
+  addItem(): void {
+    const id = nextId++;
+    this.items.update((list) => [...list, { id, label: `Item ${id}` }]);
+  }
+
+  removeItem(id: number): void {
+    this.items.update((list) => list.filter((item) => item.id !== id));
+  }
+
+  removeRandom(): void {
+    const list = this.items();
+    if (list.length === 0) return;
+    const index = Math.floor(Math.random() * list.length);
+    this.removeItem(list[index].id);
+  }
+
+  // *ngmPresence + usePresenceList demo
+  readonly presenceItems = signal<ListItem[]>([
+    { id: nextId++, label: 'Item A' },
+    { id: nextId++, label: 'Item B' },
+    { id: nextId++, label: 'Item C' },
+  ]);
   private readonly removingIds = signal(new Set<number>());
-  readonly animatedListPresence = usePresenceList(this.items, {
+  readonly animatedListPresence = usePresenceList(this.presenceItems, {
     getId: (item) => item.id,
     exitingIds: this.removingIds,
   });
@@ -663,12 +885,12 @@ export class PresencePage {
     this.visible.update((v) => !v);
   }
 
-  addItem(): void {
+  addPresenceItem(): void {
     const id = nextId++;
-    this.items.update((list) => [...list, { id, label: `Item ${id}` }]);
+    this.presenceItems.update((list) => [...list, { id, label: `Item ${id}` }]);
   }
 
-  removeItem(id: number): void {
+  removePresenceItem(id: number): void {
     if (this.removingIds().has(id)) {
       return;
     }
@@ -680,7 +902,7 @@ export class PresencePage {
     });
     // Allow time for exit animation, then remove from data
     this.pendingTimers.push(setTimeout(() => {
-      this.items.update((list) => list.filter((item) => item.id !== id));
+      this.presenceItems.update((list) => list.filter((item) => item.id !== id));
       this.removingIds.update((set) => {
         const next = new Set(set);
         next.delete(id);
@@ -689,7 +911,7 @@ export class PresencePage {
     }, 500));
   }
 
-  removeRandom(): void {
+  removePresenceRandom(): void {
     const visibleIds = this.animatedListPresence.visibleIds();
 
     if (visibleIds.length === 0) {
@@ -697,24 +919,96 @@ export class PresencePage {
     }
 
     const index = Math.floor(Math.random() * visibleIds.length);
-    this.removeItem(visibleIds[index]);
+    this.removePresenceItem(visibleIds[index]);
   }
+
+  readonly simpleForExitCode = [
+    "import { Component, signal } from '@angular/core';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
+    '',
+    '@Component({',
+    '  imports: [NgmMotionDirective],',
+    '  template: `',
+    '    <button (click)="addItem()">Add</button>',
+    '    <button (click)="removeRandom()">Remove random</button>',
+    '',
+    '    <div class="list-container">',
+    '      @for (item of items(); track item.id; let last = $last) {',
+    '        <div ngmMotion',
+    '          [initial]="{ opacity: 0, x: -20, height: 0, marginBottom: 0 }"',
+    '          [animate]="{ opacity: 1, x: 0, height: 56, marginBottom: last ? 0 : 12 }"',
+    '          [exit]="{ opacity: 0, x: 20, height: 0, marginBottom: 0 }"',
+    "          [transition]=\"{ type: 'spring', stiffness: 300, damping: 25 }\"",
+    '          class="overflow-hidden"',
+    '        >',
+    '          <div class="row">',
+    '            {{ item.label }}',
+    '            <button (click)="removeItem(item.id)">remove</button>',
+    '          </div>',
+    '        </div>',
+    '      }',
+    '    </div>',
+    '  `,',
+    '})',
+    'export class ForExitListComponent {',
+    '  readonly items = signal([',
+    "    { id: 0, label: 'Apple' },",
+    "    { id: 1, label: 'Banana' },",
+    "    { id: 2, label: 'Cherry' },",
+    '  ]);',
+    '',
+    '  removeItem(id: number) {',
+    '    this.items.update(list => list.filter(i => i.id !== id));',
+    '  }',
+    '}',
+  ].join('\n');
 
   readonly basicExitCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective, NgmPresenceDirective } from '@scripttype/ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     "import type { Transition } from '@scripttype/ng-motion';",
+    '',
+    '@Component({',
+    '  imports: [NgmMotionDirective],',
+    '  template: `',
+    '    <button (click)="visible.set(!visible())">Toggle</button>',
+    '',
+    '    @if (visible()) {',
+    '      <article ngmMotion',
+    '        [initial]="initialState"',
+    '        [animate]="animateState"',
+    '        [exit]="exitState"',
+    '        [transition]="transition"',
+    '      >',
+    '        I animate in and out.',
+    '      </article>',
+    '    }',
+    '  `,',
+    '})',
+    'export class ExitComponent {',
+    '  readonly visible = signal(true);',
+    '  readonly initialState = { opacity: 0, scale: 0.92, y: 12 };',
+    '  readonly animateState = { opacity: 1, scale: 1, y: 0 };',
+    '  readonly exitState = { opacity: 0, scale: 0.92, y: -12 };',
+    "  readonly transition: Transition = { type: 'spring', stiffness: 280, damping: 24 };",
+    '}',
+  ].join('\n');
+
+  readonly ngmPresenceCode = [
+    "import { Component, signal } from '@angular/core';",
+    "import { NgmMotionDirective, NgmPresenceDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
     '  imports: [NgmMotionDirective, NgmPresenceDirective],',
     '  template: `',
     '    <button (click)="visible.set(!visible())">Toggle</button>',
     '',
+    '    <!-- Keeps element mounted during exit — needed for presence hooks -->',
     '    <article *ngmPresence="visible()" ngmMotion',
-    '      [initial]="initialState"',
-    '      [animate]="animateState"',
-    '      [exit]="exitState"',
-    '      [transition]="transition"',
+    '      [initial]="{ opacity: 0, scale: 0.92 }"',
+    '      [animate]="{ opacity: 1, scale: 1 }"',
+    '      [exit]="{ opacity: 0, scale: 0.92 }"',
+    '      [transition]="{ type: \'spring\', stiffness: 280, damping: 24 }"',
     '    >',
     '      I animate in and out.',
     '    </article>',
@@ -722,10 +1016,6 @@ export class PresencePage {
     '})',
     'export class PresenceComponent {',
     '  readonly visible = signal(true);',
-    '  readonly initialState = { opacity: 0, scale: 0.92, y: 12 };',
-    '  readonly animateState = { opacity: 1, scale: 1, y: 0 };',
-    '  readonly exitState = { opacity: 0, scale: 0.92, y: -12 };',
-    "  readonly transition: Transition = { type: 'spring', stiffness: 280, damping: 24 };",
     '}',
   ].join('\n');
 

@@ -497,8 +497,8 @@ import { CodeBlockComponent } from '../../components/code-block.component';
           <div class="text-xs text-muted font-mono">Click the button to open an animated modal</div>
 
           <!-- Modal container - constrained to the demo box for docs purposes -->
+          @if (modalOpen()) {
           <div
-            *ngmPresence="modalOpen()"
             class="absolute inset-0 z-10 flex items-center justify-center"
           >
             <!-- Backdrop -->
@@ -538,6 +538,7 @@ import { CodeBlockComponent } from '../../components/code-block.component';
               </div>
             </div>
           </div>
+          }
         </div>
       </section>
 
@@ -1022,14 +1023,15 @@ export class RecipesPage {
 
   readonly modalDialogCode = [
     "import { Component, signal } from '@angular/core';",
-    "import { NgmMotionDirective, NgmPresenceDirective } from '@scripttype/ng-motion';",
+    "import { NgmMotionDirective } from '@scripttype/ng-motion';",
     '',
     '@Component({',
-    '  imports: [NgmMotionDirective, NgmPresenceDirective],',
+    '  imports: [NgmMotionDirective],',
     '  template: `',
     '    <button (click)="open.set(true)">Open</button>',
     '',
-    '    <div *ngmPresence="open()" class="overlay">',
+    '    @if (open()) {',
+    '    <div class="overlay">',
     '      <!-- Backdrop -->',
     '      <div ngmMotion',
     '        [initial]="{ opacity: 0 }"',
@@ -1051,6 +1053,7 @@ export class RecipesPage {
     '        <button (click)="open.set(false)">Close</button>',
     '      </div>',
     '    </div>',
+    '    }',
     '  `,',
     '})',
     'export class ModalComponent {',

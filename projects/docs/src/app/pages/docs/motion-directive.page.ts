@@ -1,17 +1,15 @@
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   NgmMotionDirective,
-  NgmPresenceDirective,
   useMotionValue,
-  usePresenceList,
   useTransform,
 } from '@scripttype/ng-motion';
 import { CodeBlockComponent } from '../../components/code-block.component';
 
 @Component({
   selector: 'app-motion-directive',
-  imports: [RouterLink, NgmMotionDirective, NgmPresenceDirective, CodeBlockComponent],
+  imports: [RouterLink, NgmMotionDirective, CodeBlockComponent],
   template: `
     <article class="max-w-3xl pb-16">
       <!-- ── 1. Header ── -->
@@ -232,7 +230,13 @@ import { CodeBlockComponent } from '../../components/code-block.component';
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >ngmMotion</code
-          >. For add/remove lists, pair
+          >. Add
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >[exit]</code
+          >
+          and exit animations work automatically &mdash; no wrapper needed.
+          For coordinated list animations with immediate UI reactions, pair
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >&#64;for</code
@@ -242,7 +246,11 @@ import { CodeBlockComponent } from '../../components/code-block.component';
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >*ngmPresence</code
           >
-          if you want the container to grow and shrink smoothly too.
+          and
+          <code
+            class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
+            >usePresenceList</code
+          >.
         </p>
 
         <app-code-block [code]="controlFlowIfCode" lang="html" filename="template" class="mb-6" />
@@ -277,36 +285,29 @@ import { CodeBlockComponent } from '../../components/code-block.component';
           </div>
 
           <!-- @if demo with exit animation — collapses height + margin so siblings slide up -->
-          <div
-            *ngmPresence="showPanel()"
-            ngmMotion
-            [initial]="{ opacity: 0, height: 0, marginBottom: 0 }"
-            [animate]="{ opacity: 1, height: 'auto', marginBottom: 24 }"
-            [exit]="{ opacity: 0, height: 0, marginBottom: 0 }"
-            [transition]="{ type: 'spring', stiffness: 300, damping: 26 }"
-            class="w-72 overflow-hidden"
-          >
-            <div class="px-5 py-4 rounded-xl bg-gradient-to-br from-accent/10 to-accent-purple/10 border border-accent/20 text-sm">
-              <div class="font-semibold mb-1 text-accent">&#64;if panel</div>
-              <div class="text-xs text-secondary">This element animates in and out with spring physics.</div>
+          @if (showPanel()) {
+            <div
+              ngmMotion
+              [initial]="{ opacity: 0, height: 0, marginBottom: 0 }"
+              [animate]="{ opacity: 1, height: 'auto', marginBottom: 24 }"
+              [exit]="{ opacity: 0, height: 0, marginBottom: 0 }"
+              [transition]="{ type: 'spring', stiffness: 300, damping: 26 }"
+              class="w-72 overflow-hidden"
+            >
+              <div class="px-5 py-4 rounded-xl bg-gradient-to-br from-accent/10 to-accent-purple/10 border border-accent/20 text-sm">
+                <div class="font-semibold mb-1 text-accent">&#64;if panel</div>
+                <div class="text-xs text-secondary">This element animates in and out with spring physics.</div>
+              </div>
             </div>
-          </div>
+          }
 
           <!-- @for demo -->
           <div class="w-72 flex flex-col">
-            @let visibleById = forItemPresence.visibleById();
-            @let gapAfter = forItemPresence.gapAfter();
-            @for (item of forItems(); track item.id) {
+            @for (item of forItems(); track item.id; let last = $last) {
               <div
-                *ngmPresence="visibleById[item.id] ?? false"
                 ngmMotion
                 [initial]="{ opacity: 0, x: -16, height: 0, marginBottom: 0 }"
-                [animate]="{
-                  opacity: 1,
-                  x: 0,
-                  height: 44,
-                  marginBottom: gapAfter[item.id] ? 8 : 0,
-                }"
+                [animate]="{ opacity: 1, x: 0, height: 44, marginBottom: last ? 0 : 8 }"
                 [exit]="{ opacity: 0, x: 16, height: 0, marginBottom: 0 }"
                 [transition]="{ type: 'spring', stiffness: 300, damping: 24 }"
                 class="overflow-hidden"
@@ -630,13 +631,6 @@ import { CodeBlockComponent } from '../../components/code-block.component';
   `,
 })
 export class MotionDirectivePage {
-  private readonly pendingTimers: ReturnType<typeof setTimeout>[] = [];
-  private readonly destroyRef = inject(DestroyRef);
-
-  constructor() {
-    this.destroyRef.onDestroy(() => this.pendingTimers.forEach(clearTimeout));
-  }
-
   // ── Interactive demo state ──
   readonly demoOpen = signal(true);
   readonly activeTab = signal(0);
@@ -644,16 +638,11 @@ export class MotionDirectivePage {
   readonly showPanel = signal(true);
   readonly svgExpanded = signal(false);
   private forItemCounter = 3;
-  private readonly removingForIds = signal(new Set<number>());
   readonly forItems = signal([
     { id: 1, label: 'Item 1' },
     { id: 2, label: 'Item 2' },
     { id: 3, label: 'Item 3' },
   ]);
-  readonly forItemPresence = usePresenceList(this.forItems, {
-    getId: (item) => item.id,
-    exitingIds: this.removingForIds,
-  });
   readonly tabs = ['Home', 'Profile', 'Settings'];
   readonly staggerItems = [
     'Declarative animations',
@@ -693,7 +682,7 @@ export class MotionDirectivePage {
     { name: 'transition', type: 'Transition', description: 'Timing, easing, spring config, repeat, and per-property overrides.' },
     { name: 'variants', type: 'Variants', description: 'Named animation states keyed by label. Referenced by animate, whileHover, etc.' },
     { name: 'style', type: 'MotionStyle', description: 'Inline style object. Accepts MotionValues for per-frame reactive updates.' },
-    { name: 'exit', type: 'TargetAndTransition | VariantLabels', description: 'Exit state used with *ngmPresence for leave animations.' },
+    { name: 'exit', type: 'TargetAndTransition | VariantLabels', description: 'Exit animation state. Works automatically with @if, @for, and @switch.' },
     { name: 'whileHover', type: 'TargetAndTransition | VariantLabels', description: 'State to animate to while the element is hovered.' },
     { name: 'whileTap', type: 'TargetAndTransition | VariantLabels', description: 'State to animate to while the element is pressed.' },
     { name: 'whileFocus', type: 'TargetAndTransition | VariantLabels', description: 'State to animate to while the element is focused.' },
@@ -796,29 +785,25 @@ export class MotionDirectivePage {
   ].join('\n');
 
   readonly controlFlowIfCode = [
-    '<!-- *ngmPresence delays removal until exit animation completes -->',
-    '<div',
-    '  *ngmPresence="showPanel()"',
-    '  ngmMotion',
-    '  [initial]="{ opacity: 0, height: 0, marginBottom: 0 }"',
-    '  [animate]="{ opacity: 1, height: \'auto\', marginBottom: 24 }"',
-    '  [exit]="{ opacity: 0, height: 0, marginBottom: 0 }"',
-    '  [transition]="{ type: \'spring\', stiffness: 300, damping: 26 }"',
-    '  class="overflow-hidden"',
-    '>',
-    '  <div class="panel-content">Panel content</div>',
-    '</div>',
+    '<!-- [exit] works directly with @if — no wrapper needed -->',
+    '@if (showPanel()) {',
+    '  <div ngmMotion',
+    '    [animate]="{ opacity: 1, height: \'auto\', marginBottom: 24 }"',
+    '    [exit]="{ opacity: 0, height: 0, marginBottom: 0 }"',
+    '    [transition]="{ type: \'spring\', stiffness: 300, damping: 26 }"',
+    '    class="overflow-hidden"',
+    '  >',
+    '    <div class="panel-content">Panel content</div>',
+    '  </div>',
+    '}',
   ].join('\n');
 
   readonly controlFlowForCode = [
-    '<!-- @for + *ngmPresence — rows grow and shrink in flow -->',
-    '@let visibleById = forItemPresence.visibleById();',
-    '<!-- gapAfter comes from usePresenceList(...) -->',
-    '@let gapAfter = forItemPresence.gapAfter();',
-    '@for (item of items(); track item.id) {',
-    '  <div *ngmPresence="visibleById[item.id] ?? false" ngmMotion',
+    '<!-- @for + [exit] — rows grow and shrink in flow -->',
+    '@for (item of items(); track item.id; let last = $last) {',
+    '  <div ngmMotion',
     '    [initial]="{ opacity: 0, x: -16, height: 0, marginBottom: 0 }"',
-    '    [animate]="{ opacity: 1, x: 0, height: 44, marginBottom: gapAfter[item.id] ? 8 : 0 }"',
+    '    [animate]="{ opacity: 1, x: 0, height: 44, marginBottom: last ? 0 : 8 }"',
     '    [exit]="{ opacity: 0, x: 16, height: 0, marginBottom: 0 }"',
     '    [transition]="{ type: \'spring\', stiffness: 300, damping: 24 }"',
     '    class="overflow-hidden"',
@@ -828,11 +813,6 @@ export class MotionDirectivePage {
     '    </div>',
     '  </div>',
     '}',
-    '',
-    'readonly forItemPresence = usePresenceList(this.items, {',
-    '  getId: (item) => item.id,',
-    '  exitingIds: this.removingIds,',
-    '});',
   ].join('\n');
 
   readonly variantPropagationCode = [
@@ -1005,24 +985,7 @@ export class MotionDirectivePage {
   }
 
   removeForItem(id: number): void {
-    if (this.removingForIds().has(id)) {
-      return;
-    }
-
-    this.removingForIds.update((ids) => {
-      const next = new Set(ids);
-      next.add(id);
-      return next;
-    });
-
-    this.pendingTimers.push(setTimeout(() => {
-      this.forItems.update((items) => items.filter((item) => item.id !== id));
-      this.removingForIds.update((ids) => {
-        const next = new Set(ids);
-        next.delete(id);
-        return next;
-      });
-    }, 450));
+    this.forItems.update((items) => items.filter((item) => item.id !== id));
   }
 
   onSliderInput(event: Event): void {
