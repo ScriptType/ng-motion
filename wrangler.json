@@ -2,6 +2,7 @@
   "name": "ng-motion",
   "compatibility_date": "2026-03-09",
   "assets": {
-    "directory": "./dist/docs/browser"
+    "directory": "./dist/docs/browser",
+    "not_found_handling": "single-page-application"
   }
 }
