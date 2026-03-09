@@ -1,0 +1,158 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-deep: #06060a;
+  --color-surface: #0f0f15;
+  --color-elevated: #171720;
+  --color-border: #1e1e2a;
+  --color-border-active: #2a2a3a;
+
+  --color-primary: #f0ede8;
+  --color-secondary: #9b97a0;
+  --color-muted: #5c5a63;
+
+  --color-accent: #00e0c6;
+  --color-accent-pink: #ff6b9d;
+  --color-accent-purple: #b18cff;
+  --color-accent-gold: #ffe566;
+
+  --color-code-bg: #0c0c14;
+
+  --font-display: 'Syne', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-card: 16px;
+  --radius-demo: 12px;
+  --radius-button: 10px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-deep);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-active);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* Selection */
+::selection {
+  background: rgba(0, 224, 198, 0.25);
+  color: var(--color-primary);
+}
+
+/* Gradient text utility */
+.text-gradient {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Prism.js Cosmic Theme ── */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #5c5a63;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: #706d78;
+}
+
+.token.namespace {
+  opacity: 0.7;
+}
+
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #ffe566;
+}
+
+.token.string,
+.token.char,
+.token.attr-value,
+.token.builtin,
+.token.inserted {
+  color: #ffe566;
+}
+
+.token.operator,
+.token.entity,
+.token.url {
+  color: #00e0c6;
+}
+
+.token.atrule,
+.token.keyword {
+  color: #ff6b9d;
+}
+
+.token.property {
+  color: #b18cff;
+}
+
+.token.tag,
+.token.selector {
+  color: #ff6b9d;
+}
+
+.token.attr-name {
+  color: #b18cff;
+}
+
+.token.function,
+.token.class-name {
+  color: #00e0c6;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #f0ede8;
+}
+
+.token.important,
+.token.bold {
+  font-weight: bold;
+}
+
+.token.italic {
+  font-style: italic;
+}
+
+.token.template-string {
+  color: #ffe566;
+}
+
+.token.interpolation {
+  color: #f0ede8;
+}
+
+/* Angular template tokens */
+.token.template-content {
+  color: #9b97a0;
+}
+
+.token.ng-interpolation {
+  color: #00e0c6;
+}

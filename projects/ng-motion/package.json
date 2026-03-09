@@ -1,0 +1,16 @@
+{
+  "name": "ng-motion",
+  "version": "0.4.0",
+  "peerDependencies": {
+    "@angular/common": "^21.2.0",
+    "@angular/core": "^21.2.0",
+    "motion-dom": "^12.34.5",
+    "motion-utils": "^12.29.2"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": [
+    "./src/lib/test-env.ts"
+  ]
+}

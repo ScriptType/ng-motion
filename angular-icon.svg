@@ -1,0 +1,33 @@
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <g clip-path="url(#prefix__clip0_9_19)">
+    <mask id="prefix__a" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="14" y="0" width="484" height="512">
+      <path d="M14 0h484v512H14V0z" fill="#fff"/>
+    </mask>
+    <g mask="url(#prefix__a)">
+      <mask id="prefix__b" style="mask-type:luminance" maskUnits="userSpaceOnUse" x="14" y="0" width="484" height="512">
+        <path d="M14 0h484v512H14V0z" fill="#fff"/>
+      </mask>
+      <g mask="url(#prefix__b)">
+        <path d="M496 86l-18 272L312 0l184 86zM380 438l-124 72-126-72 24-62h202l24 62zM190 296L223 136L256 180L289 136L320 296H190zM32 358L14 86 198 0 32 358z" fill="url(#prefix__paint0_linear_9_19)"/>
+        <path d="M496 86l-18 272L312 0l184 86zM380 438l-124 72-126-72 24-62h202l24 62zM190 296L223 136L256 180L289 136L320 296H190zM32 358L14 86 198 0 32 358z" fill="url(#prefix__paint1_linear_9_19)"/>
+      </g>
+    </g>
+  </g>
+  <defs>
+    <linearGradient id="prefix__paint0_linear_9_19" x1="120.4" y1="463.8" x2="504" y2="281.4" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E40035"/>
+      <stop offset=".2" stop-color="#F60A48"/>
+      <stop offset=".4" stop-color="#F20755"/>
+      <stop offset=".5" stop-color="#DC087D"/>
+      <stop offset=".7" stop-color="#9717E7"/>
+      <stop offset="1" stop-color="#6C00F5"/>
+    </linearGradient>
+    <linearGradient id="prefix__paint1_linear_9_19" x1="103" y1="61.4" x2="354" y2="348" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF31D9"/>
+      <stop offset="1" stop-color="#FF5BE1" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="prefix__clip0_9_19">
+      <path fill="#fff" transform="translate(14)" d="M0 0h484v512H0z"/>
+    </clipPath>
+  </defs>
+</svg>

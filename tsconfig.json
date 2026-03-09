@@ -1,0 +1,37 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "paths": {
+      "ng-motion": ["./projects/ng-motion/src/public-api.ts", "./dist/ng-motion"],
+    },
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve",
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true,
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "./projects/ng-motion/tsconfig.lib.json",
+    },
+    {
+      "path": "./projects/ng-motion/tsconfig.spec.json",
+    },
+    {
+      "path": "./projects/example/tsconfig.app.json",
+    },
+  ],
+}
