@@ -57,7 +57,7 @@ import { DemoReplayComponent } from '../components/demo-replay.component';
           class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-accent text-sm mb-8"
         >
           <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
-          v0.4
+          v0.4.2
         </div>
 
         <!-- Cosmic shuffle grid -->

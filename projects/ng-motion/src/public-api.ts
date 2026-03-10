@@ -2,7 +2,7 @@
  * Public API Surface of ng-motion
  */
 
-export const VERSION = '0.4.1';
+export const VERSION = '0.4.2';
 
 // ── Core types ──
 export type {

@@ -10,7 +10,6 @@ import {
   afterEveryRender,
   afterNextRender,
   DestroyRef,
-  DoCheck,
   Directive,
   effect,
   ElementRef,
@@ -76,7 +75,7 @@ interface OrchestrationConfig {
 @Directive({
   selector: '[ngmMotion]',
 })
-export class NgmMotionDirective implements DoCheck, OnInit {
+export class NgmMotionDirective implements OnInit {
   // ── Signal inputs ──
   readonly initial = input<TargetAndTransition | VariantLabels | boolean>();
   readonly animate = input<TargetAndTransition | VariantLabels | boolean>();
@@ -191,37 +190,6 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     );
   }
 
-  ngDoCheck(): void {
-    if (!this.mounted || !this.projection || this.ve === null) return;
-
-    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
-      this.drag(),
-      this.layout(),
-      this.layoutId(),
-    );
-    if (!hasMeasureLayout) return;
-
-    const layoutDependencyVal = this.layoutDependency();
-    if (layoutDependencyVal === undefined || layoutDependencyVal === this.prevLayoutDependency) {
-      return;
-    }
-
-    const props = this.buildCurrentProps();
-    syncProjectionOptions(
-      this.projection,
-      this.ve,
-      props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop: MotionProps extends MotionNodeOptions but viewport/drag types diverge
-      this.layoutGroup,
-    );
-    this.pendingProjectionDidUpdate =
-      snapshotBeforeUpdate(
-        this.projection,
-        props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop
-        this.presenceContext?.isPresent$() ?? true,
-        this.prevLayoutDependency,
-      ) || this.pendingProjectionDidUpdate;
-    this.prevLayoutDependency = layoutDependencyVal;
-  }
 
   constructor() {
     // Register with parent for variant propagation / orchestration
