@@ -22,28 +22,34 @@ import { DemoReplayComponent } from '../components/demo-replay.component';
         <!-- Dot grid -->
         <div class="absolute inset-0 dot-grid opacity-[0.03]"></div>
 
-        <!-- Floating orbs — pause when off-screen -->
-        <div
-          ngmMotion
-          [initial]="{ y: 0, x: 0 }"
-          [whileInView]="{ y: [-30, 30, -30], x: [-20, 20, -20] }"
-          [transition]="{ duration: 12, repeat: inf, ease: 'easeInOut' }"
-          class="absolute top-[20%] left-[20%] w-96 h-96 rounded-full bg-accent/8 blur-[100px]"
-        ></div>
-        <div
-          ngmMotion
-          [initial]="{ y: 0, x: 0 }"
-          [whileInView]="{ y: [20, -40, 20], x: [15, -25, 15] }"
-          [transition]="{ duration: 15, repeat: inf, ease: 'easeInOut' }"
-          class="absolute bottom-[30%] right-[20%] w-80 h-80 rounded-full bg-accent-pink/8 blur-[100px]"
-        ></div>
-        <div
-          ngmMotion
-          [initial]="{ y: 0, x: 0, scale: 1 }"
-          [whileInView]="{ y: [-15, 25, -15], x: [-10, 15, -10], scale: [1, 1.2, 1] }"
-          [transition]="{ duration: 18, repeat: inf, ease: 'easeInOut' }"
-          class="absolute top-[35%] right-[35%] w-64 h-64 rounded-full bg-accent-purple/6 blur-[80px]"
-        ></div>
+        <!-- Floating orbs — static on mobile (blur is expensive), animated on desktop -->
+        @if (!mobile) {
+          <div
+            ngmMotion
+            [initial]="{ y: 0, x: 0 }"
+            [whileInView]="{ y: [-30, 30, -30], x: [-20, 20, -20] }"
+            [transition]="{ duration: 12, repeat: inf, ease: 'easeInOut' }"
+            class="absolute top-[20%] left-[20%] w-96 h-96 rounded-full bg-accent/8 blur-[100px]"
+          ></div>
+          <div
+            ngmMotion
+            [initial]="{ y: 0, x: 0 }"
+            [whileInView]="{ y: [20, -40, 20], x: [15, -25, 15] }"
+            [transition]="{ duration: 15, repeat: inf, ease: 'easeInOut' }"
+            class="absolute bottom-[30%] right-[20%] w-80 h-80 rounded-full bg-accent-pink/8 blur-[100px]"
+          ></div>
+          <div
+            ngmMotion
+            [initial]="{ y: 0, x: 0, scale: 1 }"
+            [whileInView]="{ y: [-15, 25, -15], x: [-10, 15, -10], scale: [1, 1.2, 1] }"
+            [transition]="{ duration: 18, repeat: inf, ease: 'easeInOut' }"
+            class="absolute top-[35%] right-[35%] w-64 h-64 rounded-full bg-accent-purple/6 blur-[80px]"
+          ></div>
+        } @else {
+          <div class="absolute top-[20%] left-[20%] w-96 h-96 rounded-full bg-accent/8 blur-[60px]"></div>
+          <div class="absolute bottom-[30%] right-[20%] w-80 h-80 rounded-full bg-accent-pink/8 blur-[60px]"></div>
+          <div class="absolute top-[35%] right-[35%] w-64 h-64 rounded-full bg-accent-purple/6 blur-[50px]"></div>
+        }
       </div>
 
       <!-- Hero content -->
@@ -675,6 +681,7 @@ import { DemoReplayComponent } from '../components/demo-replay.component';
 })
 export class HomePage {
   protected readonly inf = Infinity;
+  protected readonly mobile = typeof window !== 'undefined' && window.innerWidth < 768;
   readonly dragDemoX: MotionValue<number>;
   readonly dragDemoY: MotionValue<number>;
   readonly dragDemoTiltX: MotionValue<number>;

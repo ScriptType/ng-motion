@@ -38,7 +38,7 @@ interface TwinkleData {
   template: `
     @if (isHomePage()) {
       <!-- Deep star field — slowest parallax (farthest away) -->
-      <div ngmMotion [style]="{ y: deepY }" class="layer">
+      <div ngmMotion [style]="mobile ? {} : { y: deepY }" class="layer">
         @for (s of deepStarData; track $index) {
           <div
             class="star"
@@ -53,30 +53,32 @@ interface TwinkleData {
         }
       </div>
 
-      <!-- Nebula wisps — medium parallax -->
-      <div ngmMotion [style]="{ y: nebulaY }" class="layer">
-        <div
-          ngmMotion
-          [animate]="{ x: [-18, 18, -18], y: [-10, 14, -10] }"
-          [transition]="{ duration: 30, repeat: inf, ease: 'easeInOut' }"
-          class="nebula n-cyan"
-        ></div>
-        <div
-          ngmMotion
-          [animate]="{ x: [14, -14, 14], y: [10, -18, 10] }"
-          [transition]="{ duration: 40, repeat: inf, ease: 'easeInOut' }"
-          class="nebula n-purple"
-        ></div>
-        <div
-          ngmMotion
-          [animate]="{ x: [-10, 12, -10], y: [-14, 10, -14] }"
-          [transition]="{ duration: 35, repeat: inf, ease: 'easeInOut' }"
-          class="nebula n-pink"
-        ></div>
-      </div>
+      @if (!mobile) {
+        <!-- Nebula wisps — medium parallax (desktop only) -->
+        <div ngmMotion [style]="{ y: nebulaY }" class="layer">
+          <div
+            ngmMotion
+            [animate]="{ x: [-18, 18, -18], y: [-10, 14, -10] }"
+            [transition]="{ duration: 30, repeat: inf, ease: 'easeInOut' }"
+            class="nebula n-cyan"
+          ></div>
+          <div
+            ngmMotion
+            [animate]="{ x: [14, -14, 14], y: [10, -18, 10] }"
+            [transition]="{ duration: 40, repeat: inf, ease: 'easeInOut' }"
+            class="nebula n-purple"
+          ></div>
+          <div
+            ngmMotion
+            [animate]="{ x: [-10, 12, -10], y: [-14, 10, -14] }"
+            [transition]="{ duration: 35, repeat: inf, ease: 'easeInOut' }"
+            class="nebula n-pink"
+          ></div>
+        </div>
+      }
 
       <!-- Near star field — fastest parallax (closest) -->
-      <div ngmMotion [style]="{ y: nearY }" class="layer">
+      <div ngmMotion [style]="mobile ? {} : { y: nearY }" class="layer">
         @for (s of nearStarData; track $index) {
           <div
             class="star"
@@ -91,30 +93,32 @@ interface TwinkleData {
         }
       </div>
 
-      <!-- Twinkle stars — individual animated bright points -->
-      <div ngmMotion [style]="{ y: twinkleY }" class="layer">
-        @for (star of twinkleStars; track star.id) {
-          <div
-            ngmMotion
-            [animate]="{
-              opacity: [star.minOpacity, star.maxOpacity, star.minOpacity]
-            }"
-            [transition]="{
-              duration: star.duration,
-              repeat: inf,
-              ease: 'easeInOut',
-              delay: star.delay
-            }"
-            class="star twinkle-star"
-            [style.left.%]="star.x"
-            [style.top.%]="star.y"
-            [style.width.px]="star.size"
-            [style.height.px]="star.size"
-            [style.background]="star.color"
-            [style.boxShadow]="star.glow"
-          ></div>
-        }
-      </div>
+      @if (!mobile) {
+        <!-- Twinkle stars — individual animated bright points (desktop only) -->
+        <div ngmMotion [style]="{ y: twinkleY }" class="layer">
+          @for (star of twinkleStars; track star.id) {
+            <div
+              ngmMotion
+              [animate]="{
+                opacity: [star.minOpacity, star.maxOpacity, star.minOpacity]
+              }"
+              [transition]="{
+                duration: star.duration,
+                repeat: inf,
+                ease: 'easeInOut',
+                delay: star.delay
+              }"
+              class="star twinkle-star"
+              [style.left.%]="star.x"
+              [style.top.%]="star.y"
+              [style.width.px]="star.size"
+              [style.height.px]="star.size"
+              [style.background]="star.color"
+              [style.boxShadow]="star.glow"
+            ></div>
+          }
+        </div>
+      }
     }
 
     <!-- Vignette — darkens edges for depth -->
@@ -135,6 +139,7 @@ interface TwinkleData {
       left: -10%;
       width: 120%;
       height: 130%;
+      will-change: transform;
     }
 
     .star {
@@ -208,6 +213,7 @@ interface TwinkleData {
 })
 export class CosmicBackgroundComponent {
   protected readonly inf = Infinity;
+  protected readonly mobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   private readonly router = inject(Router);
   private readonly navEnd = toSignal(
@@ -240,14 +246,13 @@ export class CosmicBackgroundComponent {
     this.nearY = useTransform(scrollY, (v: number) => v * -0.12);
 
     const rng = Math.random;
-    const mobile = typeof window !== 'undefined' && window.innerWidth < 768;
     this.deepStarData = [
-      ...this.generateStars(rng, mobile ? 30 : 90, 2, 4, 0.06, 0.22),
-      ...this.generateEdgeStars(rng, mobile ? 18 : 55, 2, 4, 0.06, 0.22),
+      ...this.generateStars(rng, this.mobile ? 30 : 90, 2, 4, 0.06, 0.22),
+      ...this.generateEdgeStars(rng, this.mobile ? 18 : 55, 2, 4, 0.06, 0.22),
     ];
     this.nearStarData = [
-      ...this.generateStars(rng, mobile ? 15 : 45, 3, 6, 0.08, 0.35),
-      ...this.generateEdgeStars(rng, mobile ? 10 : 30, 3, 6, 0.08, 0.35),
+      ...this.generateStars(rng, this.mobile ? 15 : 45, 3, 6, 0.08, 0.35),
+      ...this.generateEdgeStars(rng, this.mobile ? 10 : 30, 3, 6, 0.08, 0.35),
     ];
     this.twinkleStars = this.generateTwinkleStars(rng);
   }
@@ -263,7 +268,6 @@ export class CosmicBackgroundComponent {
     const stars: StarData[] = [];
 
     for (let i = 0; i < count; i++) {
-      // Percentage-based: -2% to 102% to bleed slightly past edges
       const x = Math.round((rand() * 104 - 2) * 100) / 100;
       const y = Math.round((rand() * 104 - 2) * 100) / 100;
       const size = Math.round((rand() * (maxSize - minSize) + minSize) * 10) / 10;
@@ -297,7 +301,6 @@ export class CosmicBackgroundComponent {
     const stars: StarData[] = [];
 
     for (let i = 0; i < count; i++) {
-      // Place in left (0-18%) or right (82-100%) margins
       const inLeft = rand() < 0.5;
       const x = inLeft
         ? Math.round(rand() * 18 * 100) / 100
