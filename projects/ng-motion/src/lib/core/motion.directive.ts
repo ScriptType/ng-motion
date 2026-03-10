@@ -389,6 +389,15 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     afterEveryRender(() => {
       if (!this.mounted || this.destroyed) return;
       if (!untracked(this.exit) || this.presenceContext) return;
+      // Always update parent and nextSibling — siblings can change even when
+      // this element's position is stable (e.g., a sibling was removed from
+      // the @for list). These are cheap DOM property reads.
+      this.exitParent = this.element.parentNode;
+      let sibling: ChildNode | null = this.element.nextSibling;
+      while (sibling instanceof HTMLElement && sibling.hasAttribute('data-ngm-exit-clone')) {
+        sibling = sibling.nextSibling;
+      }
+      this.exitNextSibling = sibling;
       const el = this.element;
       const ot = el.offsetTop, ol = el.offsetLeft;
       const ow = el.offsetWidth, oh = el.offsetHeight;
@@ -424,6 +433,11 @@ export class NgmMotionDirective implements DoCheck, OnInit {
           height: `${rect.height}px`,
           pointerEvents: 'none',
         });
+        // Mark clone so cacheExitRect() can skip it when resolving nextSibling.
+        // Without this, a sibling's cached nextSibling may point to this clone,
+        // and when the clone is removed after animation, the stale reference
+        // causes the next exit clone to be appended at the wrong position.
+        clone.setAttribute('data-ngm-exit-clone', '');
 
         // Insert at original parent position — preserves CSS inheritance.
         // The cached nextSibling may have been removed by Angular in the same
@@ -633,6 +647,8 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     // Cache exit rect immediately — afterEveryRender hasn't fired yet on first mount,
     // so without this the first "hide" click would find exitRect null and skip the exit.
     if (exitVal && !this.presenceContext) {
+      this.exitParent = this.element.parentNode;
+      this.exitNextSibling = this.element.nextSibling;
       this.cacheExitRect();
     }
   }
@@ -950,9 +966,9 @@ export class NgmMotionDirective implements DoCheck, OnInit {
       el = el.offsetParent as HTMLElement | null;
     }
     // Store document-relative coords — scroll subtracted at clone creation time.
+    // Parent and nextSibling are updated in afterEveryRender (always, not gated
+    // by offset changes) so they're already current when this runs.
     this.exitRect = { left, top, width: w, height: h };
-    this.exitParent = this.element.parentNode;
-    this.exitNextSibling = this.element.nextSibling;
   }
 
   /**
