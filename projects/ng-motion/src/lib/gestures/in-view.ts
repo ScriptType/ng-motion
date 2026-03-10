@@ -82,15 +82,35 @@ function isElement(value: unknown): value is Element {
   return value instanceof Element;
 }
 
+/** Build a stable string key from viewport options for change detection. */
+function viewportKey(vp: Record<string, unknown> | undefined): string {
+  if (!vp) return '';
+  return `${String(vp['margin'] ?? '0px')}_${String(vp['amount'] ?? 'some')}_${String(vp['once'] ?? false)}`;
+}
+
 export class InViewFeature extends Feature {
   private removeObserver?: () => void;
   private hasEnteredView = false;
+  /** Cached viewport options key to skip observer re-registration when unchanged. */
+  private prevViewportKey = '';
 
   override mount(): void {
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- motion-dom ViewportOptions type diverges from ng-motion's
+    const vp = this.node.getProps().viewport as Record<string, unknown> | undefined;
+    this.prevViewportKey = viewportKey(vp);
     this.startObserver();
   }
 
   override update(): void {
+    // Skip observer re-registration if viewport options haven't changed.
+    // Angular template expressions create new object references on every
+    // CD cycle, but the values are usually stable.
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- motion-dom ViewportOptions type diverges from ng-motion's
+    const vp = this.node.getProps().viewport as Record<string, unknown> | undefined;
+    const key = viewportKey(vp);
+    if (key === this.prevViewportKey && this.removeObserver) return;
+    this.prevViewportKey = key;
+
     if (this.removeObserver) {
       this.removeObserver();
     }
@@ -99,6 +119,33 @@ export class InViewFeature extends Feature {
 
   override unmount(): void {
     this.removeObserver?.();
+  }
+
+  /**
+   * Immediately stop all running animations for whileInView target properties
+   * and reset each MotionValue to its base value (from initial/style).
+   *
+   * This runs BEFORE setActive('whileInView', false) so that when motion-dom
+   * builds the deactivation fallback animation, the MotionValues are already
+   * at their target values and the fallback is skipped (animateTarget's
+   * "already at target" check: value === target && !isAnimating).
+   */
+  private stopWhileInViewAnimations(): void {
+    const whileInView = this.node.getProps().whileInView;
+    if (typeof whileInView !== 'object' || Array.isArray(whileInView) || whileInView === null) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure to separate animation targets from config
+    const { transition, transitionEnd, ...targets } = whileInView;
+    for (const key of Object.keys(targets)) {
+      const mv = this.node.getValue(key);
+      if (mv) {
+        mv.stop();
+        const base = this.node.getBaseTarget(key);
+        if (base !== undefined && base !== null) {
+          mv.set(base);
+        }
+      }
+    }
   }
 
   private startObserver(): void {
@@ -125,6 +172,13 @@ export class InViewFeature extends Feature {
 
       if (once && !isInView) return;
       if (once && isInView) this.hasEnteredView = true;
+
+      // When leaving viewport, immediately stop animations and snap to base
+      // values BEFORE updating animation state. This ensures motion-dom's
+      // deactivation fallback is skipped (values already at target).
+      if (!isInView) {
+        this.stopWhileInViewAnimations();
+      }
 
       void this.node.animationState?.setActive('whileInView', isInView);
 

@@ -861,6 +861,54 @@ export class NgmMotionDirective implements OnInit {
       this.reorderItem?.registerLayout(measured);
     };
 
+    // ── Hoist repeat into per-target transitions ──
+    // When the top-level transition has `repeat` and gesture states are defined,
+    // embed the full transition (incl. repeat) into each animation target and
+    // strip repeat from the top-level. This prevents deactivation fallback
+    // animations (which use the default transition) from repeating infinitely.
+    if (props.transition !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Transition union type doesn't expose repeat directly
+      const tr = props.transition as Record<string, unknown>;
+      if (tr['repeat'] !== undefined && tr['repeat'] !== 0) {
+        const hasObjectGesture =
+          (props.whileInView !== undefined && typeof props.whileInView === 'object' && !Array.isArray(props.whileInView)) ||
+          (props.whileHover !== undefined && typeof props.whileHover === 'object' && !Array.isArray(props.whileHover)) ||
+          (props.whileTap !== undefined && typeof props.whileTap === 'object' && !Array.isArray(props.whileTap)) ||
+          (props.whileFocus !== undefined && typeof props.whileFocus === 'object' && !Array.isArray(props.whileFocus)) ||
+          (props.whileDrag !== undefined && typeof props.whileDrag === 'object' && !Array.isArray(props.whileDrag));
+
+        if (hasObjectGesture) {
+          const fullTr = props.transition;
+          const embedRepeat = (target: TargetAndTransition | VariantLabels | undefined): typeof target => {
+            if (target === undefined || typeof target !== 'object' || Array.isArray(target)) return target;
+            const existing = target.transition;
+            return {
+              ...target,
+              transition: existing
+                ? { ...(fullTr as object), ...(existing as object) }
+                : fullTr,
+            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- rebuilt TargetAndTransition with merged transition
+            } as TargetAndTransition;
+          };
+
+          // Embed full transition (incl. repeat) into animate only if it's an object target
+          if (props.animate !== undefined && typeof props.animate === 'object' && !Array.isArray(props.animate) && typeof props.animate !== 'boolean') {
+            props.animate = embedRepeat(props.animate);
+          }
+          props.whileInView = embedRepeat(props.whileInView);
+          props.whileHover = embedRepeat(props.whileHover);
+          props.whileTap = embedRepeat(props.whileTap);
+          props.whileFocus = embedRepeat(props.whileFocus);
+          props.whileDrag = embedRepeat(props.whileDrag);
+
+          // Strip repeat-related keys from top-level so fallback animations finish
+          const { repeat: _r, repeatType: _rt, repeatDelay: _rd, ...rest } = tr;
+          // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- reconstructing Transition without repeat keys
+          props.transition = (Object.keys(rest).length > 0 ? rest : undefined) as Transition | undefined;
+        }
+      }
+    }
+
     return props;
   }
 
