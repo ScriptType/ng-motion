@@ -26,16 +26,12 @@ export class DragGesture extends Feature {
       const current: unknown = this.node.current;
       if (!isEventTarget(current)) return;
 
-      // Set touch-action to prevent browser scroll/gesture handling during drag
+      // Set touch-action: none for all drag directions. Axis-specific values
+      // (pan-x/pan-y) cause the browser to capture the touch and cancel pointer
+      // events as soon as any off-axis movement is detected.
       if (isHTMLElement(current) && props.drag !== false && props.drag !== undefined) {
         this.previousTouchAction = current.style.touchAction;
-        if (props.drag === 'x') {
-          current.style.touchAction = 'pan-y';
-        } else if (props.drag === 'y') {
-          current.style.touchAction = 'pan-x';
-        } else {
-          current.style.touchAction = 'none';
-        }
+        current.style.touchAction = 'none';
       }
 
       this.removePointerDown = addDomEvent(
