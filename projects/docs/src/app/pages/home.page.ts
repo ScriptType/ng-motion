@@ -490,6 +490,88 @@ import { DemoReplayComponent } from '../components/demo-replay.component';
       </div>
     </section>
 
+    <!-- ═══════════════════════ CLAUDE CODE SKILL ═══════════════════════ -->
+    <section class="py-32 px-6 relative">
+      <div class="absolute inset-0 pointer-events-none">
+        <div
+          ngmMotion
+          [initial]="{ x: 0, y: 0, scale: 1 }"
+          [whileInView]="{ x: [20, -20, 20], y: [-15, 15, -15], scale: [1, 1.15, 1] }"
+          [transition]="{ duration: 16, repeat: inf, ease: 'easeInOut' }"
+          class="absolute top-[40%] left-[30%] w-[400px] h-[400px] rounded-full bg-accent-purple/6 blur-[100px]"
+        ></div>
+      </div>
+
+      <div class="mx-auto max-w-4xl relative z-10">
+        <div class="text-center mb-12">
+          <div
+            ngmMotion
+            [initial]="{ opacity: 0, y: 20, scale: 0.9 }"
+            [whileInView]="{ opacity: 1, y: 0, scale: 1 }"
+            [viewport]="{ once: true, margin: '-100px' }"
+            [transition]="{ type: 'spring', stiffness: 200, damping: 20 }"
+            class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-accent-purple/20 bg-accent-purple/5 text-accent-purple text-sm mb-6"
+          >
+            <span class="w-1.5 h-1.5 rounded-full bg-accent-purple animate-pulse"></span>
+            Claude Code
+          </div>
+
+          <h2
+            ngmMotion
+            [initial]="{ opacity: 0, y: 30 }"
+            [whileInView]="{ opacity: 1, y: 0 }"
+            [viewport]="{ once: true, margin: '-100px' }"
+            [transition]="{ duration: 0.6 }"
+            class="font-display font-bold text-4xl md:text-5xl mb-4"
+          >
+            AI that knows ng-motion
+          </h2>
+          <p
+            ngmMotion
+            [initial]="{ opacity: 0, y: 20 }"
+            [whileInView]="{ opacity: 1, y: 0 }"
+            [viewport]="{ once: true, margin: '-100px' }"
+            [transition]="{ delay: 0.1, duration: 0.6 }"
+            class="text-lg text-secondary max-w-2xl mx-auto"
+          >
+            Install the ng-motion skill and Claude Code can scaffold, debug, and refactor
+            ng-motion code for you &mdash; no extra prompting needed.
+          </p>
+        </div>
+
+        <div
+          ngmMotion
+          [initial]="{ opacity: 0, y: 40 }"
+          [whileInView]="{ opacity: 1, y: 0 }"
+          [viewport]="{ once: true, margin: '-50px' }"
+          class="rounded-2xl border border-accent-purple/20 bg-surface/50 overflow-hidden"
+        >
+          <div
+            class="flex items-center gap-2 px-5 py-3 border-b border-border bg-elevated/50"
+          >
+            <div class="w-3 h-3 rounded-full bg-accent-pink/60"></div>
+            <div class="w-3 h-3 rounded-full bg-accent-gold/60"></div>
+            <div class="w-3 h-3 rounded-full bg-accent/60"></div>
+            <span class="ml-2 text-xs text-muted font-mono">Claude Code</span>
+          </div>
+          <pre
+            class="p-6 text-sm font-mono leading-loose overflow-x-auto bg-code-bg"
+          ><code class="text-secondary whitespace-pre">{{ claudeSkillCode }}</code></pre>
+        </div>
+
+        <p
+          ngmMotion
+          [initial]="{ opacity: 0 }"
+          [whileInView]="{ opacity: 1 }"
+          [viewport]="{ once: true }"
+          [transition]="{ delay: 0.3 }"
+          class="text-center text-sm text-muted mt-6"
+        >
+          Directives, hooks, gestures, presence, layout &mdash; Claude understands the full API.
+        </p>
+      </div>
+    </section>
+
     <!-- ═══════════════════════ QUICK START ═══════════════════════ -->
     <section class="py-32 px-6 border-t border-border/30">
       <div class="mx-auto max-w-3xl">
@@ -657,6 +739,14 @@ export class HomePage {
     '>',
     '  Hello, motion!',
     '</div>',
+  ].join('\n');
+
+  readonly claudeSkillCode = [
+    '# Add the marketplace',
+    '/plugin marketplace add ScriptType/ng-motion-skill',
+    '',
+    '# Install the skill',
+    '/plugin install ng-motion@ng-motion-skill',
   ].join('\n');
 
   readonly quickStartSteps = [

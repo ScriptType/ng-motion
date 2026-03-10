@@ -101,6 +101,20 @@ For repository development:
 bun install
 ```
 
+## Claude Code Skill
+
+ng-motion ships a [Claude Code](https://claude.ai/claude-code) skill that gives Claude full knowledge of the ng-motion API, directives, hooks, and patterns — so it can scaffold, debug, and refactor ng-motion code for you.
+
+```bash
+# 1. Add the marketplace
+/plugin marketplace add ScriptType/ng-motion-skill
+
+# 2. Install the skill
+/plugin install ng-motion@ng-motion-skill
+```
+
+Once installed, Claude Code understands `ngmMotion`, motion values, gestures, presence, layout animations, and every other API in the library — no extra prompting needed.
+
 ## Development
 
 Run commands from `workspace/`.

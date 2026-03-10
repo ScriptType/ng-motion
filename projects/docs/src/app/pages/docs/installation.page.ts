@@ -103,6 +103,36 @@ import { DemoReplayComponent } from '../../components/demo-replay.component';
         <app-code-block [code]="installYarn" lang="bash" filename="yarn" class="mb-6" />
       </section>
 
+      <!-- Claude Code Skill -->
+      <section
+        ngmMotion
+        [initial]="{ opacity: 0, y: 20 }"
+        [animate]="{ opacity: 1, y: 0 }"
+        [transition]="{ delay: 0.25 }"
+        class="mb-12"
+      >
+        <h2 class="font-display font-semibold text-2xl mb-4">
+          Claude Code Skill
+        </h2>
+        <p class="text-secondary mb-6">
+          If you use
+          <a href="https://claude.ai/claude-code" target="_blank" rel="noopener" class="text-accent hover:underline font-medium">Claude Code</a>,
+          install the ng-motion skill to give Claude full knowledge of every directive,
+          hook, and pattern in the library.
+        </p>
+
+        <app-code-block [code]="claudeSkillCode" lang="bash" filename="Claude Code" class="mb-4" />
+
+        <div class="rounded-xl border border-accent-purple/20 bg-accent-purple/5 p-5">
+          <p class="text-secondary text-sm">
+            Once installed, Claude can scaffold components with
+            <code class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10">ngmMotion</code>,
+            debug spring transitions, generate gesture interactions, and more &mdash;
+            without needing you to paste docs into the chat.
+          </p>
+        </div>
+      </section>
+
       <!-- Peer dependencies -->
       <section
         ngmMotion
@@ -329,6 +359,14 @@ import { DemoReplayComponent } from '../../components/demo-replay.component';
 })
 export class InstallationPage {
   readonly installNpm = 'npm install @scripttype/ng-motion motion-dom motion-utils';
+
+  readonly claudeSkillCode = [
+    '# Add the marketplace',
+    '/plugin marketplace add ScriptType/ng-motion-skill',
+    '',
+    '# Install the skill',
+    '/plugin install ng-motion@ng-motion-skill',
+  ].join('\n');
 
   readonly installBun = 'bun add @scripttype/ng-motion motion-dom motion-utils';
 
