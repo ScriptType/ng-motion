@@ -240,13 +240,14 @@ export class CosmicBackgroundComponent {
     this.nearY = useTransform(scrollY, (v: number) => v * -0.12);
 
     const rng = Math.random;
+    const mobile = typeof window !== 'undefined' && window.innerWidth < 768;
     this.deepStarData = [
-      ...this.generateStars(rng, 90, 2, 4, 0.06, 0.22),
-      ...this.generateEdgeStars(rng, 55, 2, 4, 0.06, 0.22),
+      ...this.generateStars(rng, mobile ? 30 : 90, 2, 4, 0.06, 0.22),
+      ...this.generateEdgeStars(rng, mobile ? 18 : 55, 2, 4, 0.06, 0.22),
     ];
     this.nearStarData = [
-      ...this.generateStars(rng, 45, 3, 6, 0.08, 0.35),
-      ...this.generateEdgeStars(rng, 30, 3, 6, 0.08, 0.35),
+      ...this.generateStars(rng, mobile ? 15 : 45, 3, 6, 0.08, 0.35),
+      ...this.generateEdgeStars(rng, mobile ? 10 : 30, 3, 6, 0.08, 0.35),
     ];
     this.twinkleStars = this.generateTwinkleStars(rng);
   }
