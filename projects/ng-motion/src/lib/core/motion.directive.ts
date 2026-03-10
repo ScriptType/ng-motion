@@ -66,7 +66,6 @@ interface MotionProps extends MotionNodeOptions {
   style?: MotionStyle;
 }
 
-
 /** Orchestration config extracted from a variant's transition. */
 interface OrchestrationConfig {
   when?: 'beforeChildren' | 'afterChildren';
@@ -146,6 +145,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
   private mounted = false;
   private projection: IProjectionNode | null = null;
   private pendingProjectionDidUpdate = false;
+  private pendingNotifyDidUpdate = false;
   private prevLayoutDependency: unknown;
   private reorderPointX: MotionValue<number> | null = null;
   private reorderPointY: MotionValue<number> | null = null;
@@ -187,9 +187,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     layoutIdVal: string | undefined,
   ): boolean {
     return (
-      layoutVal !== undefined ||
-      layoutIdVal !== undefined ||
-      (drag !== undefined && drag !== false)
+      layoutVal !== undefined || layoutIdVal !== undefined || (drag !== undefined && drag !== false)
     );
   }
 
@@ -275,13 +273,34 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         if (this.ve === null) return;
         const { initial: ri, animate: ra } = this.resolveExitDefaults(initial, animate, exitVal);
         const props = this.buildProps(
-          ri, ra, transition, variants, style,
-          whileHover, whileTap, whileFocus, globalTapTarget,
-          whileInView, viewport, exitVal,
-          drag, whileDrag, dragConstraints, dragElastic,
-          dragMomentum, dragTransition, dragX, dragY, dragSnapToOrigin,
-          dragDirectionLock, dragListener, dragPropagation,
-          layoutVal, layoutIdVal, layoutScrollVal, layoutRootVal,
+          ri,
+          ra,
+          transition,
+          variants,
+          style,
+          whileHover,
+          whileTap,
+          whileFocus,
+          globalTapTarget,
+          whileInView,
+          viewport,
+          exitVal,
+          drag,
+          whileDrag,
+          dragConstraints,
+          dragElastic,
+          dragMomentum,
+          dragTransition,
+          dragX,
+          dragY,
+          dragSnapToOrigin,
+          dragDirectionLock,
+          dragListener,
+          dragPropagation,
+          layoutVal,
+          layoutIdVal,
+          layoutScrollVal,
+          layoutRootVal,
           layoutDependencyVal,
         );
 
@@ -294,11 +313,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
           );
         }
 
-        const hasMeasureLayout = this.hasMeasureLayoutFeatures(
-          drag,
-          layoutVal,
-          layoutIdVal,
-        );
+        const hasMeasureLayout = this.hasMeasureLayoutFeatures(drag, layoutVal, layoutIdVal);
 
         // Snapshot before DOM update (FLIP "before" phase)
         if (this.projection && hasMeasureLayout) {
@@ -338,47 +353,64 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     // This handles the case where Angular's @for reorders DOM elements without
     // any directive inputs changing (so the effect doesn't fire). We use the
     // layout measured in the previous cycle as the "before" snapshot.
-    afterEveryRender(() => {
-      if (!this.projection) return;
+    //
+    // Split into earlyRead (DOM measurements) and write (schedule projection
+    // update) phases to avoid layout thrashing when multiple [ngmMotion]
+    // elements are on the page. The browser batches all earlyRead callbacks
+    // before any write callbacks, so reads never interleave with writes.
+    afterEveryRender({
+      earlyRead: () => {
+        if (!this.projection) return;
 
-      const hasMeasureLayout = this.hasMeasureLayoutFeatures(
-        untracked(this.drag),
-        untracked(this.layout),
-        untracked(this.layoutId),
-      );
-      if (!hasMeasureLayout) return;
+        const hasMeasureLayout = this.hasMeasureLayoutFeatures(
+          untracked(this.drag),
+          untracked(this.layout),
+          untracked(this.layoutId),
+        );
+        if (!hasMeasureLayout) return;
 
-      // Match Framer's getSnapshotBeforeUpdate -> componentDidUpdate flow.
-      // If we already captured a pre-render snapshot this cycle, only commit
-      // the update here and avoid a second post-render willUpdate().
-      if (this.pendingProjectionDidUpdate) {
-        this.pendingProjectionDidUpdate = false;
+        // Match Framer's getSnapshotBeforeUpdate -> componentDidUpdate flow.
+        // If we already captured a pre-render snapshot this cycle, only commit
+        // the update in the write phase and avoid a second post-render willUpdate().
+        if (this.pendingProjectionDidUpdate) {
+          this.pendingProjectionDidUpdate = false;
+          this.pendingNotifyDidUpdate = true;
+          return;
+        }
+
+        // When layoutDependency is set and stable, skip the manual snapshot but
+        // still run willUpdate()+didUpdate() so projection.layout stays current.
+        // Without the manual snapshot, willUpdate() measures the element at its
+        // CURRENT position → didUpdate() re-measures the same → no delta → no animation.
+        // But projection.layout is updated, so cleanup snapshots the correct position.
+        const dep = untracked(this.layoutDependency);
+        const depStable = dep !== undefined && dep === this.prevLayoutDependency;
+
+        // If willUpdate wasn't already triggered by the effect (no input changes),
+        // manually provide a snapshot from the previous layout measurement.
+        // This handles DOM reorders where Angular's @for moves elements without
+        // any directive inputs changing. Setting snapshot BEFORE willUpdate() is
+        // critical: willUpdate's updateSnapshot() has a guard `if (this.snapshot) return`
+        // so our manually-set snapshot is preserved.
+        // Skip when layoutDependency is stable — prevents animations from external
+        // page shifts (e.g., content above growing and pushing this element down).
+        if (
+          !depStable &&
+          !this.projection.isLayoutDirty &&
+          this.projection.layout !== undefined &&
+          this.projection.snapshot === undefined
+        ) {
+          this.projection.snapshot = getCachedLayoutSnapshot(this.projection);
+        }
+
+        this.projection.willUpdate();
+        this.pendingNotifyDidUpdate = true;
+      },
+      write: () => {
+        if (!this.pendingNotifyDidUpdate || !this.projection) return;
+        this.pendingNotifyDidUpdate = false;
         notifyDidUpdate(this.projection);
-        return;
-      }
-
-      // When layoutDependency is set and stable, skip the manual snapshot but
-      // still run willUpdate()+didUpdate() so projection.layout stays current.
-      // Without the manual snapshot, willUpdate() measures the element at its
-      // CURRENT position → didUpdate() re-measures the same → no delta → no animation.
-      // But projection.layout is updated, so cleanup snapshots the correct position.
-      const dep = untracked(this.layoutDependency);
-      const depStable = dep !== undefined && dep === this.prevLayoutDependency;
-
-      // If willUpdate wasn't already triggered by the effect (no input changes),
-      // manually provide a snapshot from the previous layout measurement.
-      // This handles DOM reorders where Angular's @for moves elements without
-      // any directive inputs changing. Setting snapshot BEFORE willUpdate() is
-      // critical: willUpdate's updateSnapshot() has a guard `if (this.snapshot) return`
-      // so our manually-set snapshot is preserved.
-      // Skip when layoutDependency is stable — prevents animations from external
-      // page shifts (e.g., content above growing and pushing this element down).
-      if (!depStable && !this.projection.isLayoutDirty && this.projection.layout !== undefined && this.projection.snapshot === undefined) {
-        this.projection.snapshot = getCachedLayoutSnapshot(this.projection);
-      }
-
-      this.projection.willUpdate();
-      notifyDidUpdate(this.projection);
+      },
     });
 
     // Cache element rect for exit-on-destroy. Angular detaches DOM nodes
@@ -386,30 +418,41 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     // Only runs for elements that actually need it (has [exit], no presence context).
     // Optimization: check cheap integer offsets first — skip getComputedStyle
     // when position and size haven't changed (the common case for stable elements).
-    afterEveryRender(() => {
-      if (!this.mounted || this.destroyed) return;
-      if (!untracked(this.exit) || this.presenceContext) return;
-      // Always update parent and nextSibling — siblings can change even when
-      // this element's position is stable (e.g., a sibling was removed from
-      // the @for list). These are cheap DOM property reads.
-      this.exitParent = this.element.parentNode;
-      let sibling: ChildNode | null = this.element.nextSibling;
-      while (sibling instanceof HTMLElement && sibling.hasAttribute('data-ngm-exit-clone')) {
-        sibling = sibling.nextSibling;
-      }
-      this.exitNextSibling = sibling;
-      const el = this.element;
-      const ot = el.offsetTop, ol = el.offsetLeft;
-      const ow = el.offsetWidth, oh = el.offsetHeight;
-      if (
-        ot === this._lastOffsetTop && ol === this._lastOffsetLeft &&
-        ow === this._lastOffsetWidth && oh === this._lastOffsetHeight
-      ) return;
-      this._lastOffsetTop = ot;
-      this._lastOffsetLeft = ol;
-      this._lastOffsetWidth = ow;
-      this._lastOffsetHeight = oh;
-      this.cacheExitRect();
+    // Runs in the read phase (after writes) — all operations are DOM reads
+    // (offset*, parentNode, nextSibling, getComputedStyle in cacheExitRect).
+    // Using read instead of earlyRead ensures measurements reflect the fully
+    // updated DOM after all write-phase callbacks have executed.
+    afterEveryRender({
+      read: () => {
+        if (!this.mounted || this.destroyed) return;
+        if (!untracked(this.exit) || this.presenceContext) return;
+        // Always update parent and nextSibling — siblings can change even when
+        // this element's position is stable (e.g., a sibling was removed from
+        // the @for list). These are cheap DOM property reads.
+        this.exitParent = this.element.parentNode;
+        let sibling: ChildNode | null = this.element.nextSibling;
+        while (sibling instanceof HTMLElement && sibling.hasAttribute('data-ngm-exit-clone')) {
+          sibling = sibling.nextSibling;
+        }
+        this.exitNextSibling = sibling;
+        const el = this.element;
+        const ot = el.offsetTop,
+          ol = el.offsetLeft;
+        const ow = el.offsetWidth,
+          oh = el.offsetHeight;
+        if (
+          ot === this._lastOffsetTop &&
+          ol === this._lastOffsetLeft &&
+          ow === this._lastOffsetWidth &&
+          oh === this._lastOffsetHeight
+        )
+          return;
+        this._lastOffsetTop = ot;
+        this._lastOffsetLeft = ol;
+        this._lastOffsetWidth = ow;
+        this._lastOffsetHeight = oh;
+        this.cacheExitRect();
+      },
     });
 
     this.destroyRef.onDestroy(() => {
@@ -442,7 +485,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         // Insert at original parent position — preserves CSS inheritance.
         // The cached nextSibling may have been removed by Angular in the same
         // destruction cycle (@for removing multiple items), so fall back to append.
-        if (nextSibling && nextSibling.parentNode === parent) {
+        if (nextSibling?.parentNode === parent) {
           parent.insertBefore(clone, nextSibling);
         } else {
           parent.appendChild(clone);
@@ -471,7 +514,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         // the snapshot filter uses this to exclude auto-added collapse keys.
         const userExitKeys = new Set(
           typeof exitVal === 'object' && exitVal !== null
-            ? Object.keys(exitVal as Record<string, unknown>).filter(k => k !== 'transition')
+            ? Object.keys(exitVal as Record<string, unknown>).filter((k) => k !== 'transition')
             : [],
         );
 
@@ -494,8 +537,14 @@ export class NgmMotionDirective implements DoCheck, OnInit {
 
         // Animate exit directly — no presence context ceremony needed.
         // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- TargetAndTransition | VariantLabels
-        void animateVisualElement(cloneVe, exitVal as TargetAndTransition)
-          .then(() => exitEntry.cleanup(), () => exitEntry.cleanup());
+        void animateVisualElement(cloneVe, exitVal as TargetAndTransition).then(
+          () => {
+            exitEntry.cleanup();
+          },
+          () => {
+            exitEntry.cleanup();
+          },
+        );
       }
       this.exitRect = null;
       this.exitParent = null;
@@ -506,9 +555,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
       this.cancelOrchestration();
 
       if (this.projection) {
-        const preserveProjectionOnUnmount = Boolean(
-          this.projection.options.layoutId,
-        );
+        const preserveProjectionOnUnmount = Boolean(this.projection.options.layoutId);
         cleanupProjection(this.projection, this.layoutGroup);
         // Detach projection from VE so ve.unmount() doesn't call projection.unmount(),
         // keeping the old node in the shared layout stack for the replacement to find.
@@ -526,6 +573,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
       this.reorderPointY?.destroy();
       this.reorderPointY = null;
       this.pendingProjectionDidUpdate = false;
+      this.pendingNotifyDidUpdate = false;
       this.mounted = false;
     });
   }
@@ -565,21 +613,38 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     const layoutDependencyVal = untracked(this.layoutDependency);
 
     const props = this.buildProps(
-      initial, animate, transition, variants, style,
-      whileHover, whileTap, whileFocus, globalTapTarget,
-      whileInView, viewport, exitVal,
-      drag, whileDrag, dragConstraints, dragElastic,
-      dragMomentum, dragTransition, dragX, dragY, dragSnapToOrigin,
-      dragDirectionLock, dragListener, dragPropagation,
-      layoutVal, layoutIdVal, layoutScrollVal, layoutRootVal,
+      initial,
+      animate,
+      transition,
+      variants,
+      style,
+      whileHover,
+      whileTap,
+      whileFocus,
+      globalTapTarget,
+      whileInView,
+      viewport,
+      exitVal,
+      drag,
+      whileDrag,
+      dragConstraints,
+      dragElastic,
+      dragMomentum,
+      dragTransition,
+      dragX,
+      dragY,
+      dragSnapToOrigin,
+      dragDirectionLock,
+      dragListener,
+      dragPropagation,
+      layoutVal,
+      layoutIdVal,
+      layoutScrollVal,
+      layoutRootVal,
       layoutDependencyVal,
     );
 
-    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
-      drag,
-      layoutVal,
-      layoutIdVal,
-    );
+    const hasMeasureLayout = this.hasMeasureLayoutFeatures(drag, layoutVal, layoutIdVal);
 
     const presenceCtx = this.presenceContext
       ? {
@@ -778,9 +843,10 @@ export class NgmMotionDirective implements DoCheck, OnInit {
       const axis = reorderItem?.getAxis();
       if (reorderItem !== null && axis !== undefined) {
         const motionVal = this.ve?.getValue(axis);
-        const currentOffset: number | undefined = motionVal !== undefined
-          ? (motionVal.get() as number) // eslint-disable-line @typescript-eslint/consistent-type-assertions -- MotionValue.get() returns any
-          : undefined;
+        const currentOffset: number | undefined =
+          motionVal !== undefined
+            ? (motionVal.get() as number) // eslint-disable-line @typescript-eslint/consistent-type-assertions -- MotionValue.get() returns any
+            : undefined;
         reorderItem.updateOrder(
           currentOffset ?? info.offset[axis],
           info.velocity[axis],
@@ -805,7 +871,6 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     if (layoutScrollVal !== undefined) p['layoutScroll'] = layoutScrollVal;
     if (layoutRootVal !== undefined) p['layoutRoot'] = layoutRootVal;
     if (layoutDependencyVal !== undefined) p['layoutDependency'] = layoutDependencyVal;
-
 
     // Layout animation event callbacks
     p['onLayoutAnimationStart'] = () => {
@@ -841,7 +906,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
 
   private getReorderPointValue(
     axis: 'x' | 'y',
-    styleValue: MotionStyle['x']   | undefined,
+    styleValue: MotionStyle['x'] | undefined,
   ): MotionValue<number> {
     if (isMotionValue(styleValue)) {
       return styleValue as MotionValue<number>; // eslint-disable-line @typescript-eslint/consistent-type-assertions -- isMotionValue narrows to MotionValue<any>
@@ -958,7 +1023,8 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     // Accumulate document-relative position via offsetParent chain.
     // Unlike getBoundingClientRect, offsetTop/Left is NOT affected by CSS transforms,
     // so caching during the enter animation gives correct layout position.
-    let top = 0, left = 0;
+    let top = 0,
+      left = 0;
     let el: HTMLElement | null = this.element;
     while (el) {
       top += el.offsetTop;
@@ -993,7 +1059,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         // latestValues is updated with the accurate mid-animation value.
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any -- accessing internal VE values map
         const valuesMap = (entry.ve as any).values as Map<string, MotionValue>;
-        valuesMap.forEach(mv => {
+        valuesMap.forEach((mv) => {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any -- MotionValue.animation is internal
           (mv as any).animation?.stop();
         });
@@ -1031,7 +1097,8 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Transition type doesn't expose orchestration fields directly
     const t = transition as Record<string, unknown>;
     const when = typeof t['when'] === 'string' ? t['when'] : undefined;
-    const staggerChildren = typeof t['staggerChildren'] === 'number' ? t['staggerChildren'] : undefined;
+    const staggerChildren =
+      typeof t['staggerChildren'] === 'number' ? t['staggerChildren'] : undefined;
     const delayChildren = typeof t['delayChildren'] === 'number' ? t['delayChildren'] : undefined;
 
     if (when === undefined && staggerChildren === undefined && delayChildren === undefined) {
@@ -1048,7 +1115,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
   /** Returns children that don't have their own [animate] (variant nodes). */
   private getVariantChildren(): NgmMotionDirective[] {
     return Array.from(this.orchestrationChildren).filter(
-      child => child.animate() === undefined && child.ve !== null,
+      (child) => child.animate() === undefined && child.ve !== null,
     );
   }
 
@@ -1108,7 +1175,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     const promises = children.map((child, i) => {
       const totalDelayMs = (delay + i * stagger) * 1000;
 
-      return new Promise<void>(resolve => {
+      return new Promise<void>((resolve) => {
         const trigger = (): void => {
           if (this.destroyed || !child.ve) {
             resolve();
