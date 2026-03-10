@@ -178,7 +178,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
   }>();
 
   ngOnInit(): void {
-    prerenderVisualElementStyles(this.element, this.buildCurrentProps());
+    prerenderVisualElementStyles(this.element, this.buildCurrentProps() as MotionNodeOptions); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
   }
 
   private hasMeasureLayoutFeatures(
@@ -210,7 +210,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     syncProjectionOptions(
       this.projection,
       this.ve,
-      props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop
+      props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop: MotionProps extends MotionNodeOptions but viewport/drag types diverge
       this.layoutGroup,
     );
     this.pendingProjectionDidUpdate =
@@ -304,11 +304,14 @@ export class NgmMotionDirective implements DoCheck, OnInit {
           layoutDependencyVal,
         );
 
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- MotionProps→Record boundary: viewport/dragConstraints types diverge from motion-dom (Angular doesn't use React refs)
+        const propsRec = props as Record<string, unknown>;
+
         if (this.projection !== null) {
           syncProjectionOptions(
             this.projection,
             this.ve,
-            props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop
+            propsRec,
             this.layoutGroup,
           );
         }
@@ -320,7 +323,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
           this.pendingProjectionDidUpdate =
             snapshotBeforeUpdate(
               this.projection,
-              props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop
+              propsRec,
               isPresent ?? true,
               this.prevLayoutDependency,
             ) || this.pendingProjectionDidUpdate;
@@ -341,10 +344,10 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         const variantChildren = orch ? this.getVariantChildren() : [];
         if (orch && variantChildren.length > 0 && typeof animate === 'string') {
           this.cancelOrchestration();
-          updateVisualElementProps(this.ve, props, presenceCtx);
+          updateVisualElementProps(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
           void this.orchestrate(animate, orch, variantChildren);
         } else {
-          updateVisualElement(this.ve, props, presenceCtx);
+          updateVisualElement(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
         }
       });
     });
@@ -425,7 +428,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     afterEveryRender({
       read: () => {
         if (!this.mounted || this.destroyed) return;
-        if (!untracked(this.exit) || this.presenceContext) return;
+        if (untracked(this.exit) === undefined || this.presenceContext !== null) return;
         // Always update parent and nextSibling — siblings can change even when
         // this element's position is stable (e.g., a sibling was removed from
         // the @for list). These are cheap DOM property reads.
@@ -460,20 +463,21 @@ export class NgmMotionDirective implements DoCheck, OnInit {
       // via a fresh VE + presence context. Clone is inserted at the original
       // parent position to preserve CSS inheritance (avoids text-wrapping issues).
       const exitVal = untracked(this.exit);
-      if (exitVal && !this.presenceContext && this.exitRect && this.exitParent) {
+      if (exitVal !== undefined && this.presenceContext === null && this.exitRect !== null && this.exitParent !== null) {
         const rect = this.exitRect;
         const parent = this.exitParent;
         const nextSibling = this.exitNextSibling;
 
         // Clone the element so the original can be fully destroyed by Angular.
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- cloneNode returns Node, narrowing to HTMLElement
         const clone = this.element.cloneNode(true) as HTMLElement;
 
         // Always use in-flow clone so surrounding content collapses smoothly.
         // overflow:hidden clips content as height animates to 0.
         Object.assign(clone.style, {
           overflow: 'hidden',
-          width: `${rect.width}px`,
-          height: `${rect.height}px`,
+          width: `${String(rect.width)}px`,
+          height: `${String(rect.height)}px`,
           pointerEvents: 'none',
         });
         // Mark clone so cacheExitRect() can skip it when resolving nextSibling.
@@ -501,7 +505,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         // Lightweight VE — no presence context, no projection.
         // Full mount so motion values are initialized for animateVisualElement.
         const cloneVe = createVisualElement({
-          props,
+          props: props as MotionNodeOptions, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
           blockInitialAnimation: true,
           presenceContext: null,
           allowProjection: false,
@@ -513,8 +517,8 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         // Track which keys the user explicitly defined in their exit —
         // the snapshot filter uses this to exclude auto-added collapse keys.
         const userExitKeys = new Set(
-          typeof exitVal === 'object' && exitVal !== null
-            ? Object.keys(exitVal as Record<string, unknown>).filter((k) => k !== 'transition')
+          typeof exitVal === 'object'
+            ? Object.keys(exitVal).filter((k) => k !== 'transition')
             : [],
         );
 
@@ -659,15 +663,18 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     // If a clone was mid-exit, use its current visual state as initial so the
     // new element reverses from the exit position — matching *ngmPresence behavior.
     // If no clone (exit completed), normal entrance animation plays.
-    if (exitVal && !this.presenceContext) {
+    if (exitVal !== undefined && this.presenceContext === null) {
       const snapshot = this.cancelActiveExitClone();
       if (snapshot) {
         props.initial = snapshot;
       }
     }
 
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- MotionProps→MotionNodeOptions boundary: viewport/dragConstraints types diverge from motion-dom (Angular doesn't use React refs)
+    const mountProps = props as MotionNodeOptions;
+
     this.ve = createVisualElement({
-      props,
+      props: mountProps,
       parent: this.parentMotion?.ve ?? undefined,
       blockInitialAnimation: initial === false,
       presenceContext: presenceCtx,
@@ -678,7 +685,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
 
     this.projection = initProjection(
       this.ve,
-      props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop
+      mountProps as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- measure-layout takes Record
       this.layoutGroup,
     );
     this.projection.mount(this.element);
@@ -698,7 +705,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     if (hasMeasureLayout) {
       snapshotBeforeUpdate(
         this.projection,
-        props as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- motion-dom interop
+        mountProps as Record<string, unknown>, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- measure-layout takes Record
         this.presenceContext?.isPresent ?? true,
         undefined,
         { useCachedLayoutSnapshot: false },
@@ -711,7 +718,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
 
     // Cache exit rect immediately — afterEveryRender hasn't fired yet on first mount,
     // so without this the first "hide" click would find exitRect null and skip the exit.
-    if (exitVal && !this.presenceContext) {
+    if (exitVal !== undefined && this.presenceContext === null) {
       this.exitParent = this.element.parentNode;
       this.exitNextSibling = this.element.nextSibling;
       this.cacheExitRect();
@@ -766,11 +773,11 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     if (whileHover !== undefined) props.whileHover = whileHover;
     if (whileTap !== undefined) props.whileTap = whileTap;
     if (whileFocus !== undefined) props.whileFocus = whileFocus;
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- motion-dom interop: MotionNodeOptions doesn't expose globalTapTarget/viewport
-    const propsRec = props as Record<string, unknown>;
-    if (globalTapTarget !== undefined) propsRec['globalTapTarget'] = globalTapTarget;
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Angular adapts viewport.root and dragConstraints types (no React refs)
+    const untypedProps = props as Record<string, unknown>;
+    if (globalTapTarget !== undefined) untypedProps['globalTapTarget'] = globalTapTarget;
     if (whileInView !== undefined) props.whileInView = whileInView;
-    if (viewport !== undefined) propsRec['viewport'] = viewport;
+    if (viewport !== undefined) untypedProps['viewport'] = viewport;
 
     // Wire event callbacks to Angular outputs.
     // These are read by VisualElement via getProps() when events fire.
@@ -808,17 +815,17 @@ export class NgmMotionDirective implements DoCheck, OnInit {
       if (this.destroyed) return;
       this.tapCancel.emit();
     };
-    propsRec['onViewportEnter'] = () => {
+    props.onViewportEnter = () => {
       if (this.destroyed) return;
       this.viewportEnter.emit();
     };
-    propsRec['onViewportLeave'] = () => {
+    props.onViewportLeave = () => {
       if (this.destroyed) return;
       this.viewportLeave.emit();
     };
 
-    // Drag props
-    const p = propsRec;
+    // Drag props — use untypedProps for dragConstraints (Angular accepts HTMLElement, motion-dom expects React ref)
+    const p = untypedProps;
     if (drag !== undefined) p['drag'] = drag;
     if (whileDrag !== undefined) props.whileDrag = whileDrag;
     if (dragConstraints !== undefined) p['dragConstraints'] = dragConstraints;
@@ -935,20 +942,18 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     animate: TargetAndTransition | VariantLabels | boolean | undefined;
   } {
     if (
-      !exitVal ||
+      exitVal === undefined ||
       initial !== undefined ||
-      this.presenceContext ||
+      this.presenceContext !== null ||
       typeof exitVal !== 'object' ||
       Array.isArray(exitVal)
     ) {
       return { initial, animate };
     }
 
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- extracting exit keys
-    const exitObj = exitVal as Record<string, unknown>;
     const derived: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(exitObj)) {
-      if (k !== 'transition') derived[k] = v;
+    for (const key of Object.keys(exitVal)) {
+      if (key !== 'transition') derived[key] = (exitVal as Record<string, unknown>)[key]; // eslint-disable-line @typescript-eslint/consistent-type-assertions -- TargetAndTransition lacks index signature
     }
     if (Object.keys(derived).length === 0) return { initial, animate };
 
@@ -959,17 +964,14 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     if (
       'height' in derived &&
       typeof resolvedAnimate === 'object' &&
-      resolvedAnimate !== null &&
       !Array.isArray(resolvedAnimate) &&
-      !('height' in (resolvedAnimate as Record<string, unknown>))
+      !('height' in resolvedAnimate)
     ) {
-      resolvedAnimate = {
-        ...(resolvedAnimate as Record<string, unknown>),
-        height: 'auto',
-      } as TargetAndTransition;
+      resolvedAnimate = { ...resolvedAnimate, height: 'auto' };
     }
 
     return {
+      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- derived built from exit keys, mirrors TargetAndTransition shape
       initial: derived as TargetAndTransition,
       animate: resolvedAnimate,
     };
@@ -1029,6 +1031,7 @@ export class NgmMotionDirective implements DoCheck, OnInit {
     while (el) {
       top += el.offsetTop;
       left += el.offsetLeft;
+      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- offsetParent is Element | null, narrowing to HTMLElement for offset access
       el = el.offsetParent as HTMLElement | null;
     }
     // Store document-relative coords — scroll subtracted at clone creation time.
@@ -1057,10 +1060,10 @@ export class NgmMotionDirective implements DoCheck, OnInit {
         // NativeAnimationExtended.stop() → updateMotionValue() → samples current
         // value via a renderless JSAnimation → sets motionValue → onChange fires →
         // latestValues is updated with the accurate mid-animation value.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any -- accessing internal VE values map
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions -- accessing internal VE values map
         const valuesMap = (entry.ve as any).values as Map<string, MotionValue>;
         valuesMap.forEach((mv) => {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any -- MotionValue.animation is internal
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-call -- MotionValue.animation is internal
           (mv as any).animation?.stop();
         });
 

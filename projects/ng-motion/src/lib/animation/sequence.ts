@@ -199,7 +199,7 @@ export function createAnimationsFromSequence(
     ];
 
     // Segments with only [subject, keyframes] have no transition object.
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unnecessary-condition -- transition can be undefined at runtime despite TS narrowing
     transition ??= {} as DynamicAnimationOptions & At;
 
     if (transition.at !== undefined) {
