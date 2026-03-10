@@ -127,6 +127,8 @@ export class PanSession {
         this.started = true;
         this.handlers.onStart?.(event, info);
       } else {
+        // Prevent browser scroll/refresh during active drag on touch devices
+        event.preventDefault();
         this.handlers.onMove?.(event, info);
       }
     } catch (error) {
