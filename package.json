@@ -8,7 +8,9 @@
     "build:docs": "ng build docs --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "build:lib": "bun ng build ng-motion",
+    "publish:lib": "bun run build:lib && cd dist/ng-motion && bun publish --access public"
   },
   "private": true,
   "packageManager": "bun@1.3.10",
