@@ -19,7 +19,7 @@ import {
   output,
   untracked,
 } from '@angular/core';
-import { animateVisualElement, isMotionValue, motionValue } from 'motion-dom';
+import { isMotionValue, motionValue } from 'motion-dom';
 import type {
   AnimationDefinition,
   HTMLVisualElement,
@@ -59,10 +59,49 @@ import {
   syncProjectionOptions,
 } from '../layout/measure-layout';
 import { NgmReorderItemDirective } from '../reorder/reorder-item.directive';
+import { isObjectTarget } from '../utils/type-guards';
+import { installRouterOutletTeardownAdapter } from './router-outlet-teardown-adapter';
+import { DirectLeaveController } from './direct-leave-controller';
 
 /** Extended MotionNodeOptions with style support (mirrors framer-motion's MotionProps). */
 interface MotionProps extends MotionNodeOptions {
   style?: MotionStyle;
+}
+
+type MotionAnimationInput = TargetAndTransition | VariantLabels | boolean | undefined;
+type MotionTargetInput = TargetAndTransition | VariantLabels | undefined;
+
+/** Resolved directive inputs used to build MotionProps without a giant positional argument list. */
+interface MotionInputSnapshot {
+  initial: MotionAnimationInput;
+  animate: MotionAnimationInput;
+  transition: Transition | undefined;
+  variants: Variants | undefined;
+  style: MotionStyle | undefined;
+  whileHover: MotionTargetInput;
+  whileTap: MotionTargetInput;
+  whileFocus: MotionTargetInput;
+  globalTapTarget: boolean | undefined;
+  whileInView: MotionTargetInput;
+  viewport: ViewportOptions | undefined;
+  exit: MotionTargetInput;
+  drag: boolean | DragDirection | undefined;
+  whileDrag: MotionTargetInput;
+  dragConstraints: BoundingBox | HTMLElement | undefined;
+  dragElastic: boolean | number | Partial<BoundingBox> | undefined;
+  dragMomentum: boolean | undefined;
+  dragTransition: Record<string, unknown> | undefined;
+  dragX: MotionValue<number> | undefined;
+  dragY: MotionValue<number> | undefined;
+  dragSnapToOrigin: boolean | undefined;
+  dragDirectionLock: boolean | undefined;
+  dragListener: boolean | undefined;
+  dragPropagation: boolean | undefined;
+  layout: boolean | 'position' | 'size' | 'preserve-aspect' | undefined;
+  layoutId: string | undefined;
+  layoutScroll: boolean | undefined;
+  layoutRoot: boolean | undefined;
+  layoutDependency: unknown;
 }
 
 /** Orchestration config extracted from a variant's transition. */
@@ -140,6 +179,16 @@ export class NgmMotionDirective implements OnInit {
   // ── Internal ──
   /** @internal Exposed for parent-child VisualElement linking. */
   ve: HTMLVisualElement | null = null;
+  private readonly directLeave = new DirectLeaveController({
+    element: this.element,
+    getVisualElement: () => this.ve,
+    clearVisualElement: () => {
+      if (this.ve !== null) {
+        unmountVisualElement(this.ve);
+        this.ve = null;
+      }
+    },
+  });
   private destroyed = false;
   private mounted = false;
   private projection: IProjectionNode | null = null;
@@ -148,15 +197,6 @@ export class NgmMotionDirective implements OnInit {
   private prevLayoutDependency: unknown;
   private reorderPointX: MotionValue<number> | null = null;
   private reorderPointY: MotionValue<number> | null = null;
-  /** Cached exit info (Angular detaches DOM before onDestroy). */
-  private exitRect: { left: number; top: number; width: number; height: number } | null = null;
-  private exitParent: Node | null = null;
-  private exitNextSibling: Node | null = null;
-  /** Cached offset values — skip getComputedStyle when unchanged. */
-  private _lastOffsetTop = -1;
-  private _lastOffsetLeft = -1;
-  private _lastOffsetWidth = -1;
-  private _lastOffsetHeight = -1;
 
   /** @internal Registered child directives for orchestration. */
   private readonly orchestrationChildren = new Set<NgmMotionDirective>();
@@ -164,18 +204,6 @@ export class NgmMotionDirective implements OnInit {
   private propagatedAnimate: string | undefined;
   /** @internal Pending orchestration timeouts for cleanup. */
   private orchestrationTimeouts: ReturnType<typeof setTimeout>[] = [];
-
-  /** Static registry of active exit clones for fast toggle cancellation. */
-  private static activeExits = new Set<{
-    parent: Node;
-    nextSibling: Node | null;
-    clone: HTMLElement;
-    ve: HTMLVisualElement;
-    /** Keys from the user's original exit definition (excludes auto-added collapse keys). */
-    userExitKeys: Set<string>;
-    cleanup: () => void;
-  }>();
-
   ngOnInit(): void {
     prerenderVisualElementStyles(this.element, this.buildCurrentProps() as MotionNodeOptions); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
   }
@@ -190,136 +218,114 @@ export class NgmMotionDirective implements OnInit {
     );
   }
 
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- infer from presenceContext to avoid duplicating its type
+  private buildPresenceContext(isPresent: boolean) {
+    return this.presenceContext
+      ? {
+          id: this.presenceContext.id,
+          isPresent,
+          register: this.presenceContext.register,
+          onExitComplete: this.presenceContext.onExitComplete,
+        }
+      : null;
+  }
+
+  /** Wraps a typed output emitter with a destroyed guard. */
+  private guardedEmit<T>(emitter: { emit(value: T): void }): (value: T) => void {
+    return (value: T) => {
+      if (!this.destroyed) emitter.emit(value);
+    };
+  }
+
+  /** Wraps a void output emitter with a destroyed guard (ignores callback arguments). */
+  private guardedVoidEmit(emitter: { emit(): void }): () => void {
+    return () => {
+      if (!this.destroyed) emitter.emit();
+    };
+  }
 
   constructor() {
+    installRouterOutletTeardownAdapter();
+
     // Register with parent for variant propagation / orchestration
     this.parentMotion?.orchestrationChildren.add(this);
 
+    this.setupMountLifecycle();
+    this.setupReactiveUpdates();
+    this.setupFlipLifecycle();
+    this.setupDestroyLifecycle();
+  }
+
+  private setupMountLifecycle(): void {
     afterNextRender(() => {
       this.mount();
     });
+  }
 
+  private setupReactiveUpdates(): void {
     effect(() => {
-      // Read all signals to establish reactive dependencies
-      const initial = this.initial();
-      const animate = this.animate();
-      const transition = this.transition();
-      const variants = this.variants();
-      const style = this.style();
-      const whileHover = this.whileHover();
-      const whileTap = this.whileTap();
-      const whileFocus = this.whileFocus();
-      const globalTapTarget = this.globalTapTarget();
-      const whileInView = this.whileInView();
-      const viewport = this.viewport();
-      const exitVal = this.exit();
-      // Read presence signal to establish reactive dependency
+      const inputs = this.readMotionInputs();
       const isPresent = this.presenceContext?.isPresent$();
-      const drag = this.drag();
-      const whileDrag = this.whileDrag();
-      const dragConstraints = this.dragConstraints();
-      const dragElastic = this.dragElastic();
-      const dragMomentum = this.dragMomentum();
-      const dragTransition = this.dragTransition();
-      const dragX = this.dragX();
-      const dragY = this.dragY();
-      const dragSnapToOrigin = this.dragSnapToOrigin();
-      const dragDirectionLock = this.dragDirectionLock();
-      const dragListener = this.dragListener();
-      const dragPropagation = this.dragPropagation();
-      // Read layout signals to establish reactive dependencies
-      const layoutVal = this.layout();
-      const layoutIdVal = this.layoutId();
-      const layoutScrollVal = this.layoutScroll();
-      const layoutRootVal = this.layoutRoot();
-      const layoutDependencyVal = this.layoutDependency();
 
-      // Skip before mount — afterNextRender handles initial state
+      // Skip before mount — afterNextRender handles initial state.
       if (!this.mounted) return;
 
       untracked(() => {
-        if (this.ve === null) return;
-        const { initial: ri, animate: ra } = this.resolveExitDefaults(initial, animate, exitVal);
-        const props = this.buildProps(
-          ri,
-          ra,
-          transition,
-          variants,
-          style,
-          whileHover,
-          whileTap,
-          whileFocus,
-          globalTapTarget,
-          whileInView,
-          viewport,
-          exitVal,
-          drag,
-          whileDrag,
-          dragConstraints,
-          dragElastic,
-          dragMomentum,
-          dragTransition,
-          dragX,
-          dragY,
-          dragSnapToOrigin,
-          dragDirectionLock,
-          dragListener,
-          dragPropagation,
-          layoutVal,
-          layoutIdVal,
-          layoutScrollVal,
-          layoutRootVal,
-          layoutDependencyVal,
-        );
-
-        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- MotionProps→Record boundary: viewport/dragConstraints types diverge from motion-dom (Angular doesn't use React refs)
-        const propsRec = props as Record<string, unknown>;
-
-        if (this.projection !== null) {
-          syncProjectionOptions(
-            this.projection,
-            this.ve,
-            propsRec,
-            this.layoutGroup,
-          );
-        }
-
-        const hasMeasureLayout = this.hasMeasureLayoutFeatures(drag, layoutVal, layoutIdVal);
-
-        // Snapshot before DOM update (FLIP "before" phase)
-        if (this.projection && hasMeasureLayout) {
-          this.pendingProjectionDidUpdate =
-            snapshotBeforeUpdate(
-              this.projection,
-              propsRec,
-              isPresent ?? true,
-              this.prevLayoutDependency,
-            ) || this.pendingProjectionDidUpdate;
-          this.prevLayoutDependency = layoutDependencyVal;
-        }
-
-        const presenceCtx = this.presenceContext
-          ? {
-              id: this.presenceContext.id,
-              isPresent: isPresent ?? true,
-              register: this.presenceContext.register,
-              onExitComplete: this.presenceContext.onExitComplete,
-            }
-          : null;
-
-        // Check for orchestration (when/staggerChildren/delayChildren)
-        const orch = this.getOrchestration(animate, variants);
-        const variantChildren = orch ? this.getVariantChildren() : [];
-        if (orch && variantChildren.length > 0 && typeof animate === 'string') {
-          this.cancelOrchestration();
-          updateVisualElementProps(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
-          void this.orchestrate(animate, orch, variantChildren);
-        } else {
-          updateVisualElement(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
-        }
+        this.applyReactiveUpdate(inputs, isPresent);
       });
     });
+  }
 
+  private applyReactiveUpdate(inputs: MotionInputSnapshot, isPresent: boolean | undefined): void {
+    if (this.ve === null) return;
+
+    const props = this.buildProps(inputs);
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- MotionProps→Record boundary: viewport/dragConstraints types diverge from motion-dom (Angular doesn't use React refs)
+    const propsRec = props as Record<string, unknown>;
+
+    if (this.projection !== null) {
+      syncProjectionOptions(this.projection, this.ve, propsRec, this.layoutGroup);
+    }
+
+    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
+      inputs.drag,
+      inputs.layout,
+      inputs.layoutId,
+    );
+
+    // Snapshot before DOM update (FLIP "before" phase).
+    if (this.projection && hasMeasureLayout) {
+      this.pendingProjectionDidUpdate =
+        snapshotBeforeUpdate(
+          this.projection,
+          propsRec,
+          isPresent ?? true,
+          this.prevLayoutDependency,
+        ) || this.pendingProjectionDidUpdate;
+      this.prevLayoutDependency = inputs.layoutDependency;
+    }
+
+    const presenceCtx = this.buildPresenceContext(isPresent ?? true);
+    const hasDirectExit = inputs.exit !== undefined && this.presenceContext === null;
+
+    // Dynamically register leave animation if [exit] was added after mount.
+    if (hasDirectExit && !this.directLeave.isRegistered()) {
+      this.directLeave.register();
+    }
+
+    const orch = this.getOrchestration(inputs.animate, inputs.variants);
+    const variantChildren = orch ? this.getVariantChildren() : [];
+    if (orch && variantChildren.length > 0 && typeof inputs.animate === 'string') {
+      this.cancelOrchestration();
+      updateVisualElementProps(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
+      void this.orchestrate(inputs.animate, orch, variantChildren);
+      return;
+    }
+
+    updateVisualElement(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
+  }
+
+  private setupFlipLifecycle(): void {
     // FLIP lifecycle — snapshot previous layout, then notify projection tree.
     // This handles the case where Angular's @for reorders DOM elements without
     // any directive inputs changing (so the effect doesn't fire). We use the
@@ -331,308 +337,146 @@ export class NgmMotionDirective implements OnInit {
     // before any write callbacks, so reads never interleave with writes.
     afterEveryRender({
       earlyRead: () => {
-        if (!this.projection) return;
-
-        const hasMeasureLayout = this.hasMeasureLayoutFeatures(
-          untracked(this.drag),
-          untracked(this.layout),
-          untracked(this.layoutId),
-        );
-        if (!hasMeasureLayout) return;
-
-        // Match Framer's getSnapshotBeforeUpdate -> componentDidUpdate flow.
-        // If we already captured a pre-render snapshot this cycle, only commit
-        // the update in the write phase and avoid a second post-render willUpdate().
-        if (this.pendingProjectionDidUpdate) {
-          this.pendingProjectionDidUpdate = false;
-          this.pendingNotifyDidUpdate = true;
-          return;
-        }
-
-        // When layoutDependency is set and stable, skip the manual snapshot but
-        // still run willUpdate()+didUpdate() so projection.layout stays current.
-        // Without the manual snapshot, willUpdate() measures the element at its
-        // CURRENT position → didUpdate() re-measures the same → no delta → no animation.
-        // But projection.layout is updated, so cleanup snapshots the correct position.
-        const dep = untracked(this.layoutDependency);
-        const depStable = dep !== undefined && dep === this.prevLayoutDependency;
-
-        // If willUpdate wasn't already triggered by the effect (no input changes),
-        // manually provide a snapshot from the previous layout measurement.
-        // This handles DOM reorders where Angular's @for moves elements without
-        // any directive inputs changing. Setting snapshot BEFORE willUpdate() is
-        // critical: willUpdate's updateSnapshot() has a guard `if (this.snapshot) return`
-        // so our manually-set snapshot is preserved.
-        // Skip when layoutDependency is stable — prevents animations from external
-        // page shifts (e.g., content above growing and pushing this element down).
-        if (
-          !depStable &&
-          !this.projection.isLayoutDirty &&
-          this.projection.layout !== undefined &&
-          this.projection.snapshot === undefined
-        ) {
-          this.projection.snapshot = getCachedLayoutSnapshot(this.projection);
-        }
-
-        this.projection.willUpdate();
-        this.pendingNotifyDidUpdate = true;
+        this.handleFlipEarlyRead();
       },
       write: () => {
-        if (!this.pendingNotifyDidUpdate || !this.projection) return;
-        this.pendingNotifyDidUpdate = false;
-        notifyDidUpdate(this.projection);
+        this.handleFlipWrite();
       },
-    });
-
-    // Cache element rect for exit-on-destroy. Angular detaches DOM nodes
-    // before onDestroy fires, so getBoundingClientRect() returns zeros there.
-    // Only runs for elements that actually need it (has [exit], no presence context).
-    // Optimization: check cheap integer offsets first — skip getComputedStyle
-    // when position and size haven't changed (the common case for stable elements).
-    // Runs in the read phase (after writes) — all operations are DOM reads
-    // (offset*, parentNode, nextSibling, getComputedStyle in cacheExitRect).
-    // Using read instead of earlyRead ensures measurements reflect the fully
-    // updated DOM after all write-phase callbacks have executed.
-    afterEveryRender({
-      read: () => {
-        if (!this.mounted || this.destroyed) return;
-        if (untracked(this.exit) === undefined || this.presenceContext !== null) return;
-        // Always update parent and nextSibling — siblings can change even when
-        // this element's position is stable (e.g., a sibling was removed from
-        // the @for list). These are cheap DOM property reads.
-        this.exitParent = this.element.parentNode;
-        let sibling: ChildNode | null = this.element.nextSibling;
-        while (sibling instanceof HTMLElement && sibling.hasAttribute('data-ngm-exit-clone')) {
-          sibling = sibling.nextSibling;
-        }
-        this.exitNextSibling = sibling;
-        const el = this.element;
-        const ot = el.offsetTop,
-          ol = el.offsetLeft;
-        const ow = el.offsetWidth,
-          oh = el.offsetHeight;
-        if (
-          ot === this._lastOffsetTop &&
-          ol === this._lastOffsetLeft &&
-          ow === this._lastOffsetWidth &&
-          oh === this._lastOffsetHeight
-        )
-          return;
-        this._lastOffsetTop = ot;
-        this._lastOffsetLeft = ol;
-        this._lastOffsetWidth = ow;
-        this._lastOffsetHeight = oh;
-        this.cacheExitRect();
-      },
-    });
-
-    this.destroyRef.onDestroy(() => {
-      // Exit-on-destroy: when @if removes the element, clone it and play exit
-      // via a fresh VE + presence context. Clone is inserted at the original
-      // parent position to preserve CSS inheritance (avoids text-wrapping issues).
-      const exitVal = untracked(this.exit);
-      if (exitVal !== undefined && this.presenceContext === null && this.exitRect !== null && this.exitParent !== null) {
-        const rect = this.exitRect;
-        const parent = this.exitParent;
-        const nextSibling = this.exitNextSibling;
-
-        // Clone the element so the original can be fully destroyed by Angular.
-        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- cloneNode returns Node, narrowing to HTMLElement
-        const clone = this.element.cloneNode(true) as HTMLElement;
-
-        // Always use in-flow clone so surrounding content collapses smoothly.
-        // overflow:hidden clips content as height animates to 0.
-        Object.assign(clone.style, {
-          overflow: 'hidden',
-          width: `${String(rect.width)}px`,
-          height: `${String(rect.height)}px`,
-          pointerEvents: 'none',
-        });
-        // Mark clone so cacheExitRect() can skip it when resolving nextSibling.
-        // Without this, a sibling's cached nextSibling may point to this clone,
-        // and when the clone is removed after animation, the stale reference
-        // causes the next exit clone to be appended at the wrong position.
-        clone.setAttribute('data-ngm-exit-clone', '');
-
-        // Insert at original parent position — preserves CSS inheritance.
-        // The cached nextSibling may have been removed by Angular in the same
-        // destruction cycle (@for removing multiple items), so fall back to append.
-        if (nextSibling?.parentNode === parent) {
-          parent.insertBefore(clone, nextSibling);
-        } else {
-          parent.appendChild(clone);
-        }
-
-        // Build clean props — strip Angular output callbacks (destroyed directive)
-        const props = this.buildCurrentProps();
-        props.initial = false;
-        props.onAnimationStart = undefined;
-        props.onAnimationComplete = undefined;
-        props.onUpdate = undefined;
-
-        // Lightweight VE — no presence context, no projection.
-        // Full mount so motion values are initialized for animateVisualElement.
-        const cloneVe = createVisualElement({
-          props: props as MotionNodeOptions, // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
-          blockInitialAnimation: true,
-          presenceContext: null,
-          allowProjection: false,
-        });
-
-        mountVisualElement(cloneVe, clone);
-
-        // Track in activeExits so fast toggles can cancel this clone.
-        // Track which keys the user explicitly defined in their exit —
-        // the snapshot filter uses this to exclude auto-added collapse keys.
-        const userExitKeys = new Set(
-          typeof exitVal === 'object'
-            ? Object.keys(exitVal).filter((k) => k !== 'transition')
-            : [],
-        );
-
-        let exitCleaned = false;
-        const exitEntry = {
-          parent,
-          nextSibling,
-          clone,
-          ve: cloneVe,
-          userExitKeys,
-          cleanup: () => {
-            if (exitCleaned) return;
-            exitCleaned = true;
-            clone.remove();
-            unmountVisualElement(cloneVe);
-            NgmMotionDirective.activeExits.delete(exitEntry);
-          },
-        };
-        NgmMotionDirective.activeExits.add(exitEntry);
-
-        // Animate exit directly — no presence context ceremony needed.
-        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- TargetAndTransition | VariantLabels
-        void animateVisualElement(cloneVe, exitVal as TargetAndTransition).then(
-          () => {
-            exitEntry.cleanup();
-          },
-          () => {
-            exitEntry.cleanup();
-          },
-        );
-      }
-      this.exitRect = null;
-      this.exitParent = null;
-      this.exitNextSibling = null;
-
-      this.destroyed = true;
-      this.parentMotion?.orchestrationChildren.delete(this);
-      this.cancelOrchestration();
-
-      if (this.projection) {
-        const preserveProjectionOnUnmount = Boolean(this.projection.options.layoutId);
-        cleanupProjection(this.projection, this.layoutGroup);
-        // Detach projection from VE so ve.unmount() doesn't call projection.unmount(),
-        // keeping the old node in the shared layout stack for the replacement to find.
-        if (this.ve && preserveProjectionOnUnmount) {
-          this.ve.projection = null;
-        }
-        this.projection = null;
-      }
-      if (this.ve !== null) {
-        unmountVisualElement(this.ve);
-        this.ve = null;
-      }
-      this.reorderPointX?.destroy();
-      this.reorderPointX = null;
-      this.reorderPointY?.destroy();
-      this.reorderPointY = null;
-      this.pendingProjectionDidUpdate = false;
-      this.pendingNotifyDidUpdate = false;
-      this.mounted = false;
     });
   }
 
-  private mount(): void {
+  private handleFlipEarlyRead(): void {
+    if (!this.projection) return;
+
+    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
+      untracked(this.drag),
+      untracked(this.layout),
+      untracked(this.layoutId),
+    );
+    if (!hasMeasureLayout) return;
+
+    // Match Framer's getSnapshotBeforeUpdate -> componentDidUpdate flow.
+    // If we already captured a pre-render snapshot this cycle, only commit
+    // the update in the write phase and avoid a second post-render willUpdate().
+    if (this.pendingProjectionDidUpdate) {
+      this.pendingProjectionDidUpdate = false;
+      this.pendingNotifyDidUpdate = true;
+      return;
+    }
+
+    // When layoutDependency is set and stable, skip the manual snapshot but
+    // still run willUpdate()+didUpdate() so projection.layout stays current.
+    // Without the manual snapshot, willUpdate() measures the element at its
+    // CURRENT position → didUpdate() re-measures the same → no delta → no animation.
+    // But projection.layout is updated, so cleanup snapshots the correct position.
+    const dep = untracked(this.layoutDependency);
+    const depStable = dep !== undefined && dep === this.prevLayoutDependency;
+
+    // If willUpdate wasn't already triggered by the effect (no input changes),
+    // manually provide a snapshot from the previous layout measurement.
+    // This handles DOM reorders where Angular's @for moves elements without
+    // any directive inputs changing. Setting snapshot BEFORE willUpdate() is
+    // critical: willUpdate's updateSnapshot() has a guard `if (this.snapshot) return`
+    // so our manually-set snapshot is preserved.
+    // Skip when layoutDependency is stable — prevents animations from external
+    // page shifts (e.g., content above growing and pushing this element down).
+    if (
+      !depStable &&
+      !this.projection.isLayoutDirty &&
+      this.projection.layout !== undefined &&
+      this.projection.snapshot === undefined
+    ) {
+      this.projection.snapshot = getCachedLayoutSnapshot(this.projection);
+    }
+
+    this.projection.willUpdate();
+    this.pendingNotifyDidUpdate = true;
+  }
+
+  private handleFlipWrite(): void {
+    if (!this.pendingNotifyDidUpdate || !this.projection) return;
+    this.pendingNotifyDidUpdate = false;
+    notifyDidUpdate(this.projection);
+  }
+
+  private setupDestroyLifecycle(): void {
+    this.destroyRef.onDestroy(() => {
+      this.handleDestroy();
+    });
+  }
+
+  private handleDestroy(): void {
+    // Angular's actual order: DOM detach (checks lView[ANIMATIONS].leave) → then DestroyRef.
+    // If the direct leave controller wrote to Angular's leave map, the element is still in
+    // DOM at this point — Angular skipped immediate removal. We start the exit animation here
+    // and manually remove the element when it completes.
     const exitVal = untracked(this.exit);
-    const { initial, animate } = this.resolveExitDefaults(
-      untracked(this.initial),
-      untracked(this.animate),
-      exitVal,
-    );
-    const transition = untracked(this.transition);
-    const variants = untracked(this.variants);
-    const style = untracked(this.style);
-    const whileHover = untracked(this.whileHover);
-    const whileTap = untracked(this.whileTap);
-    const whileFocus = untracked(this.whileFocus);
-    const globalTapTarget = untracked(this.globalTapTarget);
-    const whileInView = untracked(this.whileInView);
-    const viewport = untracked(this.viewport);
-    const drag = untracked(this.drag);
-    const whileDrag = untracked(this.whileDrag);
-    const dragConstraints = untracked(this.dragConstraints);
-    const dragElastic = untracked(this.dragElastic);
-    const dragMomentum = untracked(this.dragMomentum);
-    const dragTransition = untracked(this.dragTransition);
-    const dragX = untracked(this.dragX);
-    const dragY = untracked(this.dragY);
-    const dragSnapToOrigin = untracked(this.dragSnapToOrigin);
-    const dragDirectionLock = untracked(this.dragDirectionLock);
-    const dragListener = untracked(this.dragListener);
-    const dragPropagation = untracked(this.dragPropagation);
-    const layoutVal = untracked(this.layout);
-    const layoutIdVal = untracked(this.layoutId);
-    const layoutScrollVal = untracked(this.layoutScroll);
-    const layoutRootVal = untracked(this.layoutRoot);
-    const layoutDependencyVal = untracked(this.layoutDependency);
+    const hasExit =
+      exitVal !== undefined &&
+      this.presenceContext === null &&
+      this.ve !== null &&
+      this.directLeave.isRegistered();
+    const skipLeaveAnimation = hasExit && this.directLeave.shouldSkipLeaveAnimation();
+    this.directLeave.setSkipLeaveAnimationOnDestroy(skipLeaveAnimation);
 
-    const props = this.buildProps(
-      initial,
-      animate,
-      transition,
-      variants,
-      style,
-      whileHover,
-      whileTap,
-      whileFocus,
-      globalTapTarget,
-      whileInView,
-      viewport,
-      exitVal,
-      drag,
-      whileDrag,
-      dragConstraints,
-      dragElastic,
-      dragMomentum,
-      dragTransition,
-      dragX,
-      dragY,
-      dragSnapToOrigin,
-      dragDirectionLock,
-      dragListener,
-      dragPropagation,
-      layoutVal,
-      layoutIdVal,
-      layoutScrollVal,
-      layoutRootVal,
-      layoutDependencyVal,
+    this.destroyed = true;
+    this.parentMotion?.orchestrationChildren.delete(this);
+    this.cancelOrchestration();
+
+    if (this.projection) {
+      const preserveProjectionOnUnmount = Boolean(this.projection.options.layoutId);
+      cleanupProjection(this.projection, this.layoutGroup);
+      if (this.ve && preserveProjectionOnUnmount) {
+        this.ve.projection = null;
+      }
+      this.projection = null;
+    }
+    const shouldAnimateLeave = hasExit && !skipLeaveAnimation;
+
+    if (this.ve !== null && !shouldAnimateLeave) {
+      unmountVisualElement(this.ve);
+      this.ve = null;
+    }
+
+    // Exactly one of these three branches runs when leave is registered:
+    //   1. Exit animation plays → start() handles cleanup on completion
+    //   2. No [exit] binding (removed or VE gone) → resolve promises so view destruction unblocks
+    //   3. Route teardown detected → skip animation and remove routed host
+    if (shouldAnimateLeave) {
+      // Start exit animation directly — don't depend on Angular's animation queue scheduler.
+      this.directLeave.start(exitVal);
+    } else if (this.directLeave.isRegistered() && !hasExit) {
+      this.directLeave.cleanupAfterMissingExit();
+    } else if (this.directLeave.isRegistered() && skipLeaveAnimation) {
+      this.directLeave.cleanupAfterSkippedRouteTeardown();
+    }
+
+    this.reorderPointX?.destroy();
+    this.reorderPointX = null;
+    this.reorderPointY?.destroy();
+    this.reorderPointY = null;
+    this.pendingProjectionDidUpdate = false;
+    this.pendingNotifyDidUpdate = false;
+    this.mounted = false;
+  }
+
+  private mount(): void {
+    const inputs = this.readMotionInputsUntracked();
+    const props = this.buildProps(inputs);
+
+    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
+      inputs.drag,
+      inputs.layout,
+      inputs.layoutId,
     );
 
-    const hasMeasureLayout = this.hasMeasureLayoutFeatures(drag, layoutVal, layoutIdVal);
+    const presenceCtx = this.buildPresenceContext(this.presenceContext?.isPresent ?? true);
 
-    const presenceCtx = this.presenceContext
-      ? {
-          id: this.presenceContext.id,
-          isPresent: this.presenceContext.isPresent,
-          register: this.presenceContext.register,
-          onExitComplete: this.presenceContext.onExitComplete,
-        }
-      : null;
-
-    // Cancel any active exit clone at the same parent (fast @if toggle).
-    // If a clone was mid-exit, use its current visual state as initial so the
-    // new element reverses from the exit position — matching *ngmPresence behavior.
-    // If no clone (exit completed), normal entrance animation plays.
-    if (exitVal !== undefined && this.presenceContext === null) {
-      const snapshot = this.cancelActiveExitClone();
+    // Cancel any active leave animation at the same parent (fast @if toggle).
+    // If a sibling is mid-leave, snapshot its values as initial so the new
+    // element reverses from the exit position — matching *ngmPresence behavior.
+    if (inputs.exit !== undefined && this.presenceContext === null) {
+      const snapshot = this.directLeave.cancelActiveLeave();
       if (snapshot) {
         props.initial = snapshot;
       }
@@ -644,7 +488,7 @@ export class NgmMotionDirective implements OnInit {
     this.ve = createVisualElement({
       props: mountProps,
       parent: this.parentMotion?.ve ?? undefined,
-      blockInitialAnimation: initial === false,
+      blockInitialAnimation: inputs.initial === false,
       presenceContext: presenceCtx,
       allowProjection: true,
     });
@@ -679,140 +523,144 @@ export class NgmMotionDirective implements OnInit {
         { useCachedLayoutSnapshot: false },
       );
       notifyDidUpdate(this.projection);
-      this.prevLayoutDependency = layoutDependencyVal;
+      this.prevLayoutDependency = inputs.layoutDependency;
+    }
+
+    // Register leave animation dynamically when [exit] is set (without *ngmPresence).
+    // Must happen after mount so ɵgetLContext finds the element in the LView.
+    if (inputs.exit !== undefined && this.presenceContext === null) {
+      this.directLeave.register();
     }
 
     this.mounted = true;
-
-    // Cache exit rect immediately — afterEveryRender hasn't fired yet on first mount,
-    // so without this the first "hide" click would find exitRect null and skip the exit.
-    if (exitVal !== undefined && this.presenceContext === null) {
-      this.exitParent = this.element.parentNode;
-      this.exitNextSibling = this.element.nextSibling;
-      this.cacheExitRect();
-    }
   }
 
-  private buildProps(
-    initial: TargetAndTransition | VariantLabels | boolean | undefined,
-    animate: TargetAndTransition | VariantLabels | boolean | undefined,
-    transition: Transition | undefined,
-    variants: Variants | undefined,
-    style: MotionStyle | undefined,
-    whileHover?: TargetAndTransition | VariantLabels,
-    whileTap?: TargetAndTransition | VariantLabels,
-    whileFocus?: TargetAndTransition | VariantLabels,
-    globalTapTarget?: boolean,
-    whileInView?: TargetAndTransition | VariantLabels,
-    viewport?: ViewportOptions,
-    exitVal?: TargetAndTransition | VariantLabels,
-    drag?: boolean | DragDirection,
-    whileDrag?: TargetAndTransition | VariantLabels,
-    dragConstraints?: BoundingBox | HTMLElement,
-    dragElastic?: boolean | number | Partial<BoundingBox>,
-    dragMomentum?: boolean,
-    dragTransition?: Record<string, unknown>,
-    dragX?: MotionValue<number>,
-    dragY?: MotionValue<number>,
-    dragSnapToOrigin?: boolean,
-    dragDirectionLock?: boolean,
-    dragListener?: boolean,
-    dragPropagation?: boolean,
-    layoutVal?: boolean | 'position' | 'size' | 'preserve-aspect',
-    layoutIdVal?: string,
-    layoutScrollVal?: boolean,
-    layoutRootVal?: boolean,
-    layoutDependencyVal?: unknown,
-  ): MotionProps {
-    const mergedTransition = transition ?? this.config?.transition;
-    const resolvedStyle = this.getResolvedStyle(style, dragX, dragY);
-    const props: MotionProps = {};
+  private readMotionInputs(): MotionInputSnapshot {
+    const exit = this.exit();
+    const { initial, animate } = this.resolveExitDefaults(this.initial(), this.animate(), exit);
 
-    if (initial !== undefined) props.initial = initial;
-    // Use parent-propagated animate if this child has no own [animate]
-    const effectiveAnimate = animate ?? this.propagatedAnimate;
-    if (effectiveAnimate !== undefined) props.animate = effectiveAnimate;
-    if (mergedTransition !== undefined) props.transition = mergedTransition;
-    if (variants !== undefined) props.variants = variants;
-    if (resolvedStyle !== undefined) props.style = resolvedStyle;
-    if (exitVal !== undefined) props.exit = exitVal;
+    return {
+      initial,
+      animate,
+      transition: this.transition(),
+      variants: this.variants(),
+      style: this.style(),
+      whileHover: this.whileHover(),
+      whileTap: this.whileTap(),
+      whileFocus: this.whileFocus(),
+      globalTapTarget: this.globalTapTarget(),
+      whileInView: this.whileInView(),
+      viewport: this.viewport(),
+      exit,
+      drag: this.drag(),
+      whileDrag: this.whileDrag(),
+      dragConstraints: this.dragConstraints(),
+      dragElastic: this.dragElastic(),
+      dragMomentum: this.dragMomentum(),
+      dragTransition: this.dragTransition(),
+      dragX: this.dragX(),
+      dragY: this.dragY(),
+      dragSnapToOrigin: this.dragSnapToOrigin(),
+      dragDirectionLock: this.dragDirectionLock(),
+      dragListener: this.dragListener(),
+      dragPropagation: this.dragPropagation(),
+      layout: this.layout(),
+      layoutId: this.layoutId(),
+      layoutScroll: this.layoutScroll(),
+      layoutRoot: this.layoutRoot(),
+      layoutDependency: this.layoutDependency(),
+    };
+  }
 
-    // Gesture props
-    if (whileHover !== undefined) props.whileHover = whileHover;
-    if (whileTap !== undefined) props.whileTap = whileTap;
-    if (whileFocus !== undefined) props.whileFocus = whileFocus;
+  private readMotionInputsUntracked(): MotionInputSnapshot {
+    return untracked(() => this.readMotionInputs());
+  }
+
+  private buildProps(inputs: MotionInputSnapshot): MotionProps {
+    const mergedTransition = inputs.transition ?? this.config?.transition;
+    const resolvedStyle = this.getResolvedStyle(inputs.style, inputs.dragX, inputs.dragY);
+    const props = this.buildBaseMotionProps(inputs, mergedTransition, resolvedStyle);
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Angular adapts viewport.root and dragConstraints types (no React refs)
     const untypedProps = props as Record<string, unknown>;
-    if (globalTapTarget !== undefined) untypedProps['globalTapTarget'] = globalTapTarget;
-    if (whileInView !== undefined) props.whileInView = whileInView;
-    if (viewport !== undefined) untypedProps['viewport'] = viewport;
 
-    // Wire event callbacks to Angular outputs.
-    // These are read by VisualElement via getProps() when events fire.
-    props.onAnimationStart = (definition: AnimationDefinition) => {
-      if (this.destroyed) return;
-      this.animationStart.emit(definition);
-    };
-    props.onAnimationComplete = (definition: AnimationDefinition) => {
-      if (this.destroyed) return;
-      this.animationComplete.emit(definition);
-    };
-    props.onUpdate = (latest: ResolvedValues) => {
-      if (this.destroyed) return;
-      this.update.emit(latest);
-    };
+    this.applyGestureProps(props, untypedProps, inputs);
+    this.attachAnimationCallbacks(props);
+    this.applyDragProps(props, untypedProps, inputs);
+    this.applyLayoutProps(untypedProps, inputs);
+    this.attachLayoutCallbacks(untypedProps);
+    this.hoistRepeatTransitions(props);
 
-    // Gesture callbacks → Angular outputs
-    props.onHoverStart = () => {
-      if (this.destroyed) return;
-      this.hoverStart.emit();
-    };
-    props.onHoverEnd = () => {
-      if (this.destroyed) return;
-      this.hoverEnd.emit();
-    };
-    props.onTap = () => {
-      if (this.destroyed) return;
-      this.tap.emit();
-    };
-    props.onTapStart = () => {
-      if (this.destroyed) return;
-      this.tapStart.emit();
-    };
-    props.onTapCancel = () => {
-      if (this.destroyed) return;
-      this.tapCancel.emit();
-    };
-    props.onViewportEnter = () => {
-      if (this.destroyed) return;
-      this.viewportEnter.emit();
-    };
-    props.onViewportLeave = () => {
-      if (this.destroyed) return;
-      this.viewportLeave.emit();
-    };
+    return props;
+  }
 
-    // Drag props — use untypedProps for dragConstraints (Angular accepts HTMLElement, motion-dom expects React ref)
-    const p = untypedProps;
-    if (drag !== undefined) p['drag'] = drag;
-    if (whileDrag !== undefined) props.whileDrag = whileDrag;
-    if (dragConstraints !== undefined) p['dragConstraints'] = dragConstraints;
-    if (dragElastic !== undefined) p['dragElastic'] = dragElastic;
-    if (dragMomentum !== undefined) p['dragMomentum'] = dragMomentum;
-    if (dragTransition !== undefined) p['dragTransition'] = dragTransition;
-    if (dragX !== undefined) p['_dragX'] = dragX;
-    if (dragY !== undefined) p['_dragY'] = dragY;
-    if (dragSnapToOrigin !== undefined) p['dragSnapToOrigin'] = dragSnapToOrigin;
-    if (dragDirectionLock !== undefined) p['dragDirectionLock'] = dragDirectionLock;
-    if (dragListener !== undefined) p['dragListener'] = dragListener;
-    if (dragPropagation !== undefined) p['dragPropagation'] = dragPropagation;
+  private buildBaseMotionProps(
+    inputs: MotionInputSnapshot,
+    mergedTransition: Transition | undefined,
+    resolvedStyle: MotionStyle | undefined,
+  ): MotionProps {
+    const props: MotionProps = {};
 
-    p['onDragStart'] = () => {
+    if (inputs.initial !== undefined) props.initial = inputs.initial;
+    const effectiveAnimate = inputs.animate ?? this.propagatedAnimate;
+    if (effectiveAnimate !== undefined) props.animate = effectiveAnimate;
+    if (mergedTransition !== undefined) props.transition = mergedTransition;
+    if (inputs.variants !== undefined) props.variants = inputs.variants;
+    if (resolvedStyle !== undefined) props.style = resolvedStyle;
+    if (inputs.exit !== undefined) props.exit = inputs.exit;
+
+    return props;
+  }
+
+  private applyGestureProps(
+    props: MotionProps,
+    untypedProps: Record<string, unknown>,
+    inputs: MotionInputSnapshot,
+  ): void {
+    if (inputs.whileHover !== undefined) props.whileHover = inputs.whileHover;
+    if (inputs.whileTap !== undefined) props.whileTap = inputs.whileTap;
+    if (inputs.whileFocus !== undefined) props.whileFocus = inputs.whileFocus;
+    if (inputs.globalTapTarget !== undefined) untypedProps['globalTapTarget'] = inputs.globalTapTarget;
+    if (inputs.whileInView !== undefined) props.whileInView = inputs.whileInView;
+    if (inputs.viewport !== undefined) untypedProps['viewport'] = inputs.viewport;
+  }
+
+  private attachAnimationCallbacks(props: MotionProps): void {
+    props.onAnimationStart = this.guardedEmit(this.animationStart);
+    props.onAnimationComplete = this.guardedEmit(this.animationComplete);
+    props.onUpdate = this.guardedEmit(this.update);
+    props.onHoverStart = this.guardedVoidEmit(this.hoverStart);
+    props.onHoverEnd = this.guardedVoidEmit(this.hoverEnd);
+    props.onTap = this.guardedVoidEmit(this.tap);
+    props.onTapStart = this.guardedVoidEmit(this.tapStart);
+    props.onTapCancel = this.guardedVoidEmit(this.tapCancel);
+    props.onViewportEnter = this.guardedVoidEmit(this.viewportEnter);
+    props.onViewportLeave = this.guardedVoidEmit(this.viewportLeave);
+  }
+
+  private applyDragProps(
+    props: MotionProps,
+    untypedProps: Record<string, unknown>,
+    inputs: MotionInputSnapshot,
+  ): void {
+    if (inputs.drag !== undefined) untypedProps['drag'] = inputs.drag;
+    if (inputs.whileDrag !== undefined) props.whileDrag = inputs.whileDrag;
+    if (inputs.dragConstraints !== undefined) untypedProps['dragConstraints'] = inputs.dragConstraints;
+    if (inputs.dragElastic !== undefined) untypedProps['dragElastic'] = inputs.dragElastic;
+    if (inputs.dragMomentum !== undefined) untypedProps['dragMomentum'] = inputs.dragMomentum;
+    if (inputs.dragTransition !== undefined) untypedProps['dragTransition'] = inputs.dragTransition;
+    if (inputs.dragX !== undefined) untypedProps['_dragX'] = inputs.dragX;
+    if (inputs.dragY !== undefined) untypedProps['_dragY'] = inputs.dragY;
+    if (inputs.dragSnapToOrigin !== undefined) untypedProps['dragSnapToOrigin'] = inputs.dragSnapToOrigin;
+    if (inputs.dragDirectionLock !== undefined) untypedProps['dragDirectionLock'] = inputs.dragDirectionLock;
+    if (inputs.dragListener !== undefined) untypedProps['dragListener'] = inputs.dragListener;
+    if (inputs.dragPropagation !== undefined) untypedProps['dragPropagation'] = inputs.dragPropagation;
+
+    untypedProps['onDragStart'] = () => {
       if (this.destroyed) return;
       this.reorderItem?.onDragStart();
       this.dragStart.emit();
     };
-    p['onDrag'] = (_event: PointerEvent, info: PanInfo) => {
+    untypedProps['onDrag'] = (_event: PointerEvent, info: PanInfo) => {
       if (this.destroyed) return;
       const reorderItem = this.reorderItem;
       const axis = reorderItem?.getAxis();
@@ -830,86 +678,88 @@ export class NgmMotionDirective implements OnInit {
       }
       this.dragMove.emit();
     };
-    p['onDragEnd'] = () => {
+    untypedProps['onDragEnd'] = () => {
       if (this.destroyed) return;
       this.reorderItem?.onDragEnd();
       this.dragEnd.emit();
     };
-    p['onDirectionLock'] = () => {
-      if (this.destroyed) return;
-      this.directionLock.emit();
-    };
+    untypedProps['onDirectionLock'] = this.guardedVoidEmit(this.directionLock);
+  }
 
-    // Layout props
-    if (layoutVal !== undefined) p['layout'] = layoutVal;
-    if (layoutIdVal !== undefined) p['layoutId'] = layoutIdVal;
-    if (layoutScrollVal !== undefined) p['layoutScroll'] = layoutScrollVal;
-    if (layoutRootVal !== undefined) p['layoutRoot'] = layoutRootVal;
-    if (layoutDependencyVal !== undefined) p['layoutDependency'] = layoutDependencyVal;
+  private applyLayoutProps(
+    untypedProps: Record<string, unknown>,
+    inputs: MotionInputSnapshot,
+  ): void {
+    if (inputs.layout !== undefined) untypedProps['layout'] = inputs.layout;
+    if (inputs.layoutId !== undefined) untypedProps['layoutId'] = inputs.layoutId;
+    if (inputs.layoutScroll !== undefined) untypedProps['layoutScroll'] = inputs.layoutScroll;
+    if (inputs.layoutRoot !== undefined) untypedProps['layoutRoot'] = inputs.layoutRoot;
+    if (inputs.layoutDependency !== undefined) untypedProps['layoutDependency'] = inputs.layoutDependency;
+  }
 
-    // Layout animation event callbacks
-    p['onLayoutAnimationStart'] = () => {
-      if (this.destroyed) return;
-      this.layoutAnimationStart.emit();
-    };
-    p['onLayoutAnimationComplete'] = () => {
-      if (this.destroyed) return;
-      this.layoutAnimationComplete.emit();
-    };
-    p['onLayoutMeasure'] = (measured: Box) => {
+  private attachLayoutCallbacks(untypedProps: Record<string, unknown>): void {
+    untypedProps['onLayoutAnimationStart'] = this.guardedVoidEmit(this.layoutAnimationStart);
+    untypedProps['onLayoutAnimationComplete'] = this.guardedVoidEmit(this.layoutAnimationComplete);
+    untypedProps['onLayoutMeasure'] = (measured: Box) => {
       if (this.destroyed) return;
       this.reorderItem?.registerLayout(measured);
     };
+  }
 
-    // ── Hoist repeat into per-target transitions ──
+  private hoistRepeatTransitions(props: MotionProps): void {
     // When the top-level transition has `repeat` and gesture states are defined,
     // embed the full transition (incl. repeat) into each animation target and
     // strip repeat from the top-level. This prevents deactivation fallback
     // animations (which use the default transition) from repeating infinitely.
-    if (props.transition !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Transition union type doesn't expose repeat directly
-      const tr = props.transition as Record<string, unknown>;
-      if (tr['repeat'] !== undefined && tr['repeat'] !== 0) {
-        const hasObjectGesture =
-          (props.whileInView !== undefined && typeof props.whileInView === 'object' && !Array.isArray(props.whileInView)) ||
-          (props.whileHover !== undefined && typeof props.whileHover === 'object' && !Array.isArray(props.whileHover)) ||
-          (props.whileTap !== undefined && typeof props.whileTap === 'object' && !Array.isArray(props.whileTap)) ||
-          (props.whileFocus !== undefined && typeof props.whileFocus === 'object' && !Array.isArray(props.whileFocus)) ||
-          (props.whileDrag !== undefined && typeof props.whileDrag === 'object' && !Array.isArray(props.whileDrag));
+    if (props.transition === undefined) return;
 
-        if (hasObjectGesture) {
-          const fullTr = props.transition;
-          const embedRepeat = (target: TargetAndTransition | VariantLabels | undefined): typeof target => {
-            if (target === undefined || typeof target !== 'object' || Array.isArray(target)) return target;
-            const existing = target.transition;
-            return {
-              ...target,
-              transition: existing
-                ? { ...(fullTr as object), ...(existing as object) }
-                : fullTr,
-            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- rebuilt TargetAndTransition with merged transition
-            } as TargetAndTransition;
-          };
-
-          // Embed full transition (incl. repeat) into animate only if it's an object target
-          if (props.animate !== undefined && typeof props.animate === 'object' && !Array.isArray(props.animate) && typeof props.animate !== 'boolean') {
-            props.animate = embedRepeat(props.animate);
-          }
-          props.whileInView = embedRepeat(props.whileInView);
-          props.whileHover = embedRepeat(props.whileHover);
-          props.whileTap = embedRepeat(props.whileTap);
-          props.whileFocus = embedRepeat(props.whileFocus);
-          props.whileDrag = embedRepeat(props.whileDrag);
-
-          // Strip repeat-related keys from top-level so fallback animations finish
-          const { repeat: _r, repeatType: _rt, repeatDelay: _rd, ...rest } = tr;
-          // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- reconstructing Transition without repeat keys
-          props.transition = (Object.keys(rest).length > 0 ? rest : undefined) as Transition | undefined;
-        }
-      }
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Transition union type doesn't expose repeat directly
+    const transitionRecord = props.transition as Record<string, unknown>;
+    if (transitionRecord['repeat'] === undefined || transitionRecord['repeat'] === 0) {
+      return;
     }
 
-    return props;
+    const hasObjectGesture =
+      isObjectTarget(props.whileInView) ||
+      isObjectTarget(props.whileHover) ||
+      isObjectTarget(props.whileTap) ||
+      isObjectTarget(props.whileFocus) ||
+      isObjectTarget(props.whileDrag);
+
+    if (!hasObjectGesture) return;
+
+    const fullTransition = props.transition;
+    const embedRepeat = (
+      target: TargetAndTransition | VariantLabels | undefined,
+    ): typeof target => {
+      if (target === undefined || typeof target !== 'object' || Array.isArray(target)) {
+        return target;
+      }
+
+      const existing = target.transition;
+      /* eslint-disable @typescript-eslint/consistent-type-assertions -- Transition union type can't be spread directly, cast to object for merge */
+      const merged = existing
+        ? { ...(fullTransition as object), ...(existing as object) }
+        : fullTransition;
+      return { ...target, transition: merged } as TargetAndTransition;
+      /* eslint-enable @typescript-eslint/consistent-type-assertions */
+    };
+
+    if (isObjectTarget(props.animate)) {
+      props.animate = embedRepeat(props.animate);
+    }
+    props.whileInView = embedRepeat(props.whileInView);
+    props.whileHover = embedRepeat(props.whileHover);
+    props.whileTap = embedRepeat(props.whileTap);
+    props.whileFocus = embedRepeat(props.whileFocus);
+    props.whileDrag = embedRepeat(props.whileDrag);
+
+    const { repeat: _repeat, repeatType: _repeatType, repeatDelay: _repeatDelay, ...rest } =
+      transitionRecord;
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- reconstructing Transition without repeat keys
+    props.transition = (Object.keys(rest).length > 0 ? rest : undefined) as
+      | Transition
+      | undefined;
   }
 
   private getResolvedStyle(
@@ -958,11 +808,9 @@ export class NgmMotionDirective implements OnInit {
     animate: TargetAndTransition | VariantLabels | boolean | undefined;
   } {
     if (
-      exitVal === undefined ||
+      !isObjectTarget(exitVal) ||
       initial !== undefined ||
-      this.presenceContext !== null ||
-      typeof exitVal !== 'object' ||
-      Array.isArray(exitVal)
+      this.presenceContext !== null
     ) {
       return { initial, animate };
     }
@@ -994,108 +842,7 @@ export class NgmMotionDirective implements OnInit {
   }
 
   private buildCurrentProps(): MotionProps {
-    const initial = untracked(this.initial);
-    const animate = untracked(this.animate);
-    const exitVal = untracked(this.exit);
-    const { initial: ri, animate: ra } = this.resolveExitDefaults(initial, animate, exitVal);
-    return this.buildProps(
-      ri,
-      ra,
-      untracked(this.transition),
-      untracked(this.variants),
-      untracked(this.style),
-      untracked(this.whileHover),
-      untracked(this.whileTap),
-      untracked(this.whileFocus),
-      untracked(this.globalTapTarget),
-      untracked(this.whileInView),
-      untracked(this.viewport),
-      untracked(this.exit),
-      untracked(this.drag),
-      untracked(this.whileDrag),
-      untracked(this.dragConstraints),
-      untracked(this.dragElastic),
-      untracked(this.dragMomentum),
-      untracked(this.dragTransition),
-      untracked(this.dragX),
-      untracked(this.dragY),
-      untracked(this.dragSnapToOrigin),
-      untracked(this.dragDirectionLock),
-      untracked(this.dragListener),
-      untracked(this.dragPropagation),
-      untracked(this.layout),
-      untracked(this.layoutId),
-      untracked(this.layoutScroll),
-      untracked(this.layoutRoot),
-      untracked(this.layoutDependency),
-    );
-  }
-
-  /** Caches the element's document-relative position for exit-on-destroy. */
-  private cacheExitRect(): void {
-    // Use getComputedStyle for sub-pixel width/height — offsetWidth rounds to
-    // integers which can cause text wrapping on the clone.
-    const cs = getComputedStyle(this.element);
-    const w = parseFloat(cs.width);
-    const h = parseFloat(cs.height);
-    // Accumulate document-relative position via offsetParent chain.
-    // Unlike getBoundingClientRect, offsetTop/Left is NOT affected by CSS transforms,
-    // so caching during the enter animation gives correct layout position.
-    let top = 0,
-      left = 0;
-    let el: HTMLElement | null = this.element;
-    while (el) {
-      top += el.offsetTop;
-      left += el.offsetLeft;
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- offsetParent is Element | null, narrowing to HTMLElement for offset access
-      el = el.offsetParent as HTMLElement | null;
-    }
-    // Store document-relative coords — scroll subtracted at clone creation time.
-    // Parent and nextSibling are updated in afterEveryRender (always, not gated
-    // by offset changes) so they're already current when this runs.
-    this.exitRect = { left, top, width: w, height: h };
-  }
-
-  /**
-   * Cancels any active exit clone at this element's parent.
-   * Returns a snapshot of the clone's current animated values (for reversal),
-   * or null if no active clone was found.
-   */
-  private cancelActiveExitClone(): Record<string, number> | null {
-    const parent = this.element.parentNode;
-    if (!parent) return null;
-    // Match by parent + nextSibling to find the clone at THIS element's exact
-    // DOM position. Prevents @for list items from cancelling each other's exits.
-    const sibling = this.element.nextSibling;
-    for (const entry of NgmMotionDirective.activeExits) {
-      // Match by parent + nextSibling OR parent + clone-is-nextSibling.
-      // Angular inserts the new element before the clone, so the new
-      // element's nextSibling IS the clone (not the original sibling).
-      if (entry.parent === parent && (entry.nextSibling === sibling || entry.clone === sibling)) {
-        // Stop all running WAAPI animations on the clone VE.
-        // NativeAnimationExtended.stop() → updateMotionValue() → samples current
-        // value via a renderless JSAnimation → sets motionValue → onChange fires →
-        // latestValues is updated with the accurate mid-animation value.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions -- accessing internal VE values map
-        const valuesMap = (entry.ve as any).values as Map<string, MotionValue>;
-        valuesMap.forEach((mv) => {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-call -- MotionValue.animation is internal
-          (mv as any).animation?.stop();
-        });
-
-        // Only snapshot properties the user explicitly defined in their exit.
-        // Auto-added collapse props (height, marginTop, etc.) must NOT leak
-        // into the new element's initial state as sticky inline styles.
-        const snapshot: Record<string, number> = {};
-        for (const [k, v] of Object.entries(entry.ve.latestValues)) {
-          if (typeof v === 'number' && entry.userExitKeys.has(k)) snapshot[k] = v;
-        }
-
-        entry.cleanup();
-        return Object.keys(snapshot).length > 0 ? snapshot : null;
-      }
-    }
-    return null;
+    return this.buildProps(this.readMotionInputsUntracked());
   }
 
   // ── Orchestration (when / staggerChildren / delayChildren) ──
