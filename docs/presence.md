@@ -2,7 +2,7 @@
 
 ## Default: `@if` / `@for` + `[exit]`
 
-The simplest way to animate elements out is to add `[exit]` directly on `ngmMotion` inside Angular's built-in control flow. No extra directive needed — the directive clones the element, plays the exit animation, and removes the clone when done.
+The simplest way to animate elements out is to add `[exit]` directly on `ngmMotion` inside Angular's built-in control flow. No extra directive needed — the directive keeps the element in the DOM, plays the exit animation, and removes it when done.
 
 ```ts
 import { Component, signal } from '@angular/core';
@@ -55,7 +55,7 @@ This also works with `@for` — each item gets its own exit animation when remov
 
 ## Advanced: `*ngmPresence`
 
-Use `*ngmPresence` when you need the presence context hooks (`useIsPresent`, `usePresence`, `usePresenceList`). It keeps the element mounted in the DOM while the exit animation runs, rather than cloning it.
+Use `*ngmPresence` when you need the presence context hooks (`useIsPresent`, `usePresence`, `usePresenceList`). It keeps the element mounted with a presence context while the exit animation runs, enabling child components to react to the exiting state.
 
 ```ts
 import { Component, signal } from '@angular/core';

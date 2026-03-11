@@ -87,7 +87,7 @@ When Angular creates an element through `@if`, `ngmMotion` mounts and plays the 
 }
 ```
 
-Add an `[exit]` input to animate the element out before Angular removes it. The directive automatically clones the element, plays the exit animation, and removes the clone when done:
+Add an `[exit]` input to animate the element out before Angular removes it. The directive hooks into Angular's leave animation pipeline to keep the element in the DOM, plays the exit animation, and removes it when done:
 
 ```html
 @if (visible()) {

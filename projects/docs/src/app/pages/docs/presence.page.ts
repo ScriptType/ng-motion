@@ -45,8 +45,8 @@ interface ListItem {
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >&#64;switch</code
-          >. When Angular removes an element, ng-motion creates a clone
-          and plays the exit animation before cleaning up. For coordinated exits
+          >. When Angular removes an element, ng-motion keeps it in the DOM,
+          plays the exit animation, and removes it when done. For coordinated exits
           and presence hooks,
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
@@ -84,8 +84,8 @@ interface ListItem {
           <code
             class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
             >false</code
-          >, ng-motion clones the element and plays the exit animation
-          before removing it. No wrapper needed.
+          >, ng-motion keeps the element in the DOM and plays the exit
+          animation before removing it. No wrapper needed.
         </p>
 
         <app-code-block [code]="basicExitCode" lang="typescript" filename="presence-toggle.component.ts" class="mb-6" />
@@ -160,12 +160,12 @@ interface ListItem {
               <span class="text-xs font-mono text-accent font-bold">1</span>
             </div>
             <p class="text-secondary">
-              Angular removes the original element from the DOM (normal
+              Angular begins tearing down the element (normal
               <code
                 class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                 >&#64;if</code
               >
-              behavior).
+              behavior), but ng-motion's leave registration defers removal.
             </p>
           </div>
           <div class="flex items-start gap-4">
@@ -180,8 +180,8 @@ interface ListItem {
                 class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                 >ngmMotion</code
               >
-              directive intercepts destruction and creates an in-flow clone at the
-              original position.
+              directive hooks into Angular's leave animation pipeline to keep the
+              element in the DOM.
             </p>
           </div>
           <div class="flex items-start gap-4">
@@ -196,7 +196,7 @@ interface ListItem {
                 class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                 >exit</code
               >
-              animation plays on the clone.
+              animation plays on the original element.
             </p>
           </div>
           <div class="flex items-start gap-4">
@@ -206,7 +206,7 @@ interface ListItem {
               <span class="text-xs font-mono text-accent font-bold">4</span>
             </div>
             <p class="text-secondary">
-              Once the animation completes, the clone is removed from the DOM.
+              Once the animation completes, the element is removed from the DOM.
             </p>
           </div>
         </div>
@@ -245,7 +245,7 @@ interface ListItem {
             >&#64;for</code
           >
           loops. Remove an item from the array and each removed element gets its
-          own exit clone that animates independently. No wrapper or helper needed.
+          own exit animation that runs independently. No wrapper or helper needed.
         </p>
 
         <app-code-block [code]="simpleForExitCode" lang="typescript" filename="simple-list.component.ts" class="mb-6" />
@@ -739,7 +739,7 @@ interface ListItem {
               </p>
               <p class="text-secondary text-sm">
                 No wrapper needed. When Angular removes the element, the directive
-                clones it and plays the exit animation automatically. Use
+                keeps it in the DOM and plays the exit animation automatically. Use
                 <code
                   class="text-accent-pink font-mono text-sm px-1.5 py-0.5 rounded bg-accent-pink/10"
                   >*ngmPresence</code
