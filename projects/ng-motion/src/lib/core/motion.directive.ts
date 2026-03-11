@@ -14,16 +14,12 @@ import {
   effect,
   ElementRef,
   inject,
-  Injector,
   input,
   OnInit,
   output,
   untracked,
-  ɵallLeavingAnimations,
-  ɵgetLContext,
 } from '@angular/core';
-import { Router } from '@angular/router';
-import { animateVisualElement, isMotionValue, motionValue } from 'motion-dom';
+import { isMotionValue, motionValue } from 'motion-dom';
 import type {
   AnimationDefinition,
   HTMLVisualElement,
@@ -63,10 +59,49 @@ import {
   syncProjectionOptions,
 } from '../layout/measure-layout';
 import { NgmReorderItemDirective } from '../reorder/reorder-item.directive';
+import { isObjectTarget } from '../utils/type-guards';
+import { installRouterOutletTeardownAdapter } from './router-outlet-teardown-adapter';
+import { DirectLeaveController } from './direct-leave-controller';
 
 /** Extended MotionNodeOptions with style support (mirrors framer-motion's MotionProps). */
 interface MotionProps extends MotionNodeOptions {
   style?: MotionStyle;
+}
+
+type MotionAnimationInput = TargetAndTransition | VariantLabels | boolean | undefined;
+type MotionTargetInput = TargetAndTransition | VariantLabels | undefined;
+
+/** Resolved directive inputs used to build MotionProps without a giant positional argument list. */
+interface MotionInputSnapshot {
+  initial: MotionAnimationInput;
+  animate: MotionAnimationInput;
+  transition: Transition | undefined;
+  variants: Variants | undefined;
+  style: MotionStyle | undefined;
+  whileHover: MotionTargetInput;
+  whileTap: MotionTargetInput;
+  whileFocus: MotionTargetInput;
+  globalTapTarget: boolean | undefined;
+  whileInView: MotionTargetInput;
+  viewport: ViewportOptions | undefined;
+  exit: MotionTargetInput;
+  drag: boolean | DragDirection | undefined;
+  whileDrag: MotionTargetInput;
+  dragConstraints: BoundingBox | HTMLElement | undefined;
+  dragElastic: boolean | number | Partial<BoundingBox> | undefined;
+  dragMomentum: boolean | undefined;
+  dragTransition: Record<string, unknown> | undefined;
+  dragX: MotionValue<number> | undefined;
+  dragY: MotionValue<number> | undefined;
+  dragSnapToOrigin: boolean | undefined;
+  dragDirectionLock: boolean | undefined;
+  dragListener: boolean | undefined;
+  dragPropagation: boolean | undefined;
+  layout: boolean | 'position' | 'size' | 'preserve-aspect' | undefined;
+  layoutId: string | undefined;
+  layoutScroll: boolean | undefined;
+  layoutRoot: boolean | undefined;
+  layoutDependency: unknown;
 }
 
 /** Orchestration config extracted from a variant's transition. */
@@ -74,44 +109,6 @@ interface OrchestrationConfig {
   when?: 'beforeChildren' | 'afterChildren';
   staggerChildren: number;
   delayChildren: number;
-}
-
-/**
- * Internal Angular LView array indices — verified for Angular 21.2.
- * Used by registerLeaveAnimation() to write directly to the LView's animation
- * data, bypassing the (animate.leave) host binding overhead for non-exit elements.
- *
- * Validate on major Angular upgrades:
- *   node_modules/@angular/core/fesm2022/_effect-chunk2.mjs → search "const ID", "const ANIMATIONS"
- */
-const LVIEW_ID = 19;
-const LVIEW_INJECTOR = 9;
-const LVIEW_ANIMATIONS = 26;
-const LVIEW_PARENT = 3;
-const LVIEW_DECLARATION_VIEW = 14;
-
-type LeaveAnimateFn = () => { promise: Promise<void> };
-
-interface LViewLeaveAnimationEntry {
-  animateFns: LeaveAnimateFn[];
-  resolvers?: Array<() => void>;
-}
-
-interface LViewAnimations {
-  leave?: Map<number, LViewLeaveAnimationEntry>;
-  running?: Promise<void>;
-}
-
-interface AngularAnimationQueue {
-  queue: Set<() => void>;
-  isScheduled: boolean;
-  scheduler: ((injector: unknown) => void) | null;
-  injector: unknown;
-}
-
-/** Type guard for non-null, non-array objects (TargetAndTransition, not VariantLabels). */
-function isObjectTarget(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 @Directive({
@@ -178,11 +175,20 @@ export class NgmMotionDirective implements OnInit {
   private readonly presenceContext = inject(PRESENCE_CONTEXT, { optional: true });
   private readonly layoutGroup = inject(LAYOUT_GROUP, { optional: true, skipSelf: true });
   private readonly reorderItem = inject(NgmReorderItemDirective, { optional: true, self: true });
-  private readonly router = inject(Router, { optional: true });
 
   // ── Internal ──
   /** @internal Exposed for parent-child VisualElement linking. */
   ve: HTMLVisualElement | null = null;
+  private readonly directLeave = new DirectLeaveController({
+    element: this.element,
+    getVisualElement: () => this.ve,
+    clearVisualElement: () => {
+      if (this.ve !== null) {
+        unmountVisualElement(this.ve);
+        this.ve = null;
+      }
+    },
+  });
   private destroyed = false;
   private mounted = false;
   private projection: IProjectionNode | null = null;
@@ -191,25 +197,6 @@ export class NgmMotionDirective implements OnInit {
   private prevLayoutDependency: unknown;
   private reorderPointX: MotionValue<number> | null = null;
   private reorderPointY: MotionValue<number> | null = null;
-  /** Whether a leave animation is currently playing. */
-  private leaveAnimationActive = false;
-  /** Whether this element has a leave animation registered on its LView. */
-  private leaveRegistered = false;
-  /** Cached LView data from registerLeaveAnimation() for O(1) cleanup. */
-  private leaveNodeIndex = -1;
-  private leaveLView: unknown[] | null = null;
-  /** Cached animateFn identity for O(1) leave map cleanup. */
-  private leaveAnimateFn: LeaveAnimateFn | null = null;
-  /** Resolvers for Angular leave promises; route teardown may register multiple waiters per node. */
-  private readonly leaveResolvers: Array<() => void> = [];
-  /** Listener for Angular's cancel-leaving-nodes event, stored for cleanup. */
-  private cancelLeaveListener: ((e: Event) => void) | null = null;
-  /** Reference to this directive's entry in activeLeaves for O(1) cleanup. */
-  private leaveEntry: {
-    directive: NgmMotionDirective;
-    parent: Node;
-    userExitKeys: Set<string>;
-  } | null = null;
 
   /** @internal Registered child directives for orchestration. */
   private readonly orchestrationChildren = new Set<NgmMotionDirective>();
@@ -217,22 +204,6 @@ export class NgmMotionDirective implements OnInit {
   private propagatedAnimate: string | undefined;
   /** @internal Pending orchestration timeouts for cleanup. */
   private orchestrationTimeouts: ReturnType<typeof setTimeout>[] = [];
-
-  /** Static registry of active leave animations for fast toggle cancellation. */
-  private static activeLeaves = new Set<{
-    directive: NgmMotionDirective;
-    parent: Node;
-    /** Keys from the user's original exit definition (excludes auto-added collapse keys). */
-    userExitKeys: Set<string>;
-  }>();
-
-  /**
-   * Static store for snapshots from cancelled leave animations.
-   * When Angular's `cancelLeavingNodes` removes a leaving element (fast @if toggle),
-   * the snapshot is saved here keyed by parent node so the incoming element can
-   * pick it up as its initial state in mount().
-   */
-  private static cancelledLeaveSnapshots = new WeakMap<Node, Record<string, number>>();
   ngOnInit(): void {
     prerenderVisualElementStyles(this.element, this.buildCurrentProps() as MotionNodeOptions); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
   }
@@ -273,136 +244,88 @@ export class NgmMotionDirective implements OnInit {
     };
   }
 
-  /** Resolves every pending Angular leave promise for this node. */
-  private resolveLeavePromises(): void {
-    while (this.leaveResolvers.length > 0) {
-      this.leaveResolvers.pop()?.();
-    }
-  }
-
   constructor() {
+    installRouterOutletTeardownAdapter();
+
     // Register with parent for variant propagation / orchestration
     this.parentMotion?.orchestrationChildren.add(this);
 
+    this.setupMountLifecycle();
+    this.setupReactiveUpdates();
+    this.setupFlipLifecycle();
+    this.setupDestroyLifecycle();
+  }
+
+  private setupMountLifecycle(): void {
     afterNextRender(() => {
       this.mount();
     });
+  }
 
+  private setupReactiveUpdates(): void {
     effect(() => {
-      // Read all signals to establish reactive dependencies
-      const initial = this.initial();
-      const animate = this.animate();
-      const transition = this.transition();
-      const variants = this.variants();
-      const style = this.style();
-      const whileHover = this.whileHover();
-      const whileTap = this.whileTap();
-      const whileFocus = this.whileFocus();
-      const globalTapTarget = this.globalTapTarget();
-      const whileInView = this.whileInView();
-      const viewport = this.viewport();
-      const exitVal = this.exit();
-      // Read presence signal to establish reactive dependency
+      const inputs = this.readMotionInputs();
       const isPresent = this.presenceContext?.isPresent$();
-      const drag = this.drag();
-      const whileDrag = this.whileDrag();
-      const dragConstraints = this.dragConstraints();
-      const dragElastic = this.dragElastic();
-      const dragMomentum = this.dragMomentum();
-      const dragTransition = this.dragTransition();
-      const dragX = this.dragX();
-      const dragY = this.dragY();
-      const dragSnapToOrigin = this.dragSnapToOrigin();
-      const dragDirectionLock = this.dragDirectionLock();
-      const dragListener = this.dragListener();
-      const dragPropagation = this.dragPropagation();
-      // Read layout signals to establish reactive dependencies
-      const layoutVal = this.layout();
-      const layoutIdVal = this.layoutId();
-      const layoutScrollVal = this.layoutScroll();
-      const layoutRootVal = this.layoutRoot();
-      const layoutDependencyVal = this.layoutDependency();
 
-      // Skip before mount — afterNextRender handles initial state
+      // Skip before mount — afterNextRender handles initial state.
       if (!this.mounted) return;
 
       untracked(() => {
-        if (this.ve === null) return;
-        const { initial: ri, animate: ra } = this.resolveExitDefaults(initial, animate, exitVal);
-        const props = this.buildProps(
-          ri,
-          ra,
-          transition,
-          variants,
-          style,
-          whileHover,
-          whileTap,
-          whileFocus,
-          globalTapTarget,
-          whileInView,
-          viewport,
-          exitVal,
-          drag,
-          whileDrag,
-          dragConstraints,
-          dragElastic,
-          dragMomentum,
-          dragTransition,
-          dragX,
-          dragY,
-          dragSnapToOrigin,
-          dragDirectionLock,
-          dragListener,
-          dragPropagation,
-          layoutVal,
-          layoutIdVal,
-          layoutScrollVal,
-          layoutRootVal,
-          layoutDependencyVal,
-        );
-
-        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- MotionProps→Record boundary: viewport/dragConstraints types diverge from motion-dom (Angular doesn't use React refs)
-        const propsRec = props as Record<string, unknown>;
-
-        if (this.projection !== null) {
-          syncProjectionOptions(this.projection, this.ve, propsRec, this.layoutGroup);
-        }
-
-        const hasMeasureLayout = this.hasMeasureLayoutFeatures(drag, layoutVal, layoutIdVal);
-
-        // Snapshot before DOM update (FLIP "before" phase)
-        if (this.projection && hasMeasureLayout) {
-          this.pendingProjectionDidUpdate =
-            snapshotBeforeUpdate(
-              this.projection,
-              propsRec,
-              isPresent ?? true,
-              this.prevLayoutDependency,
-            ) || this.pendingProjectionDidUpdate;
-          this.prevLayoutDependency = layoutDependencyVal;
-        }
-
-        const presenceCtx = this.buildPresenceContext(isPresent ?? true);
-        const hasDirectExit = exitVal !== undefined && this.presenceContext === null;
-
-        // Dynamically register leave animation if [exit] was added after mount.
-        if (hasDirectExit && !this.leaveRegistered) {
-          this.registerLeaveAnimation();
-        }
-
-        // Check for orchestration (when/staggerChildren/delayChildren)
-        const orch = this.getOrchestration(animate, variants);
-        const variantChildren = orch ? this.getVariantChildren() : [];
-        if (orch && variantChildren.length > 0 && typeof animate === 'string') {
-          this.cancelOrchestration();
-          updateVisualElementProps(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
-          void this.orchestrate(animate, orch, variantChildren);
-        } else {
-          updateVisualElement(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
-        }
+        this.applyReactiveUpdate(inputs, isPresent);
       });
     });
+  }
 
+  private applyReactiveUpdate(inputs: MotionInputSnapshot, isPresent: boolean | undefined): void {
+    if (this.ve === null) return;
+
+    const props = this.buildProps(inputs);
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- MotionProps→Record boundary: viewport/dragConstraints types diverge from motion-dom (Angular doesn't use React refs)
+    const propsRec = props as Record<string, unknown>;
+
+    if (this.projection !== null) {
+      syncProjectionOptions(this.projection, this.ve, propsRec, this.layoutGroup);
+    }
+
+    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
+      inputs.drag,
+      inputs.layout,
+      inputs.layoutId,
+    );
+
+    // Snapshot before DOM update (FLIP "before" phase).
+    if (this.projection && hasMeasureLayout) {
+      this.pendingProjectionDidUpdate =
+        snapshotBeforeUpdate(
+          this.projection,
+          propsRec,
+          isPresent ?? true,
+          this.prevLayoutDependency,
+        ) || this.pendingProjectionDidUpdate;
+      this.prevLayoutDependency = inputs.layoutDependency;
+    }
+
+    const presenceCtx = this.buildPresenceContext(isPresent ?? true);
+    const hasDirectExit = inputs.exit !== undefined && this.presenceContext === null;
+
+    // Dynamically register leave animation if [exit] was added after mount.
+    if (hasDirectExit && !this.directLeave.isRegistered()) {
+      this.directLeave.register();
+    }
+
+    const orch = this.getOrchestration(inputs.animate, inputs.variants);
+    const variantChildren = orch ? this.getVariantChildren() : [];
+    if (orch && variantChildren.length > 0 && typeof inputs.animate === 'string') {
+      this.cancelOrchestration();
+      updateVisualElementProps(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
+      void this.orchestrate(inputs.animate, orch, variantChildren);
+      return;
+    }
+
+    updateVisualElement(this.ve, props as MotionNodeOptions, presenceCtx); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
+  }
+
+  private setupFlipLifecycle(): void {
     // FLIP lifecycle — snapshot previous layout, then notify projection tree.
     // This handles the case where Angular's @for reorders DOM elements without
     // any directive inputs changing (so the effect doesn't fire). We use the
@@ -414,210 +337,146 @@ export class NgmMotionDirective implements OnInit {
     // before any write callbacks, so reads never interleave with writes.
     afterEveryRender({
       earlyRead: () => {
-        if (!this.projection) return;
-
-        const hasMeasureLayout = this.hasMeasureLayoutFeatures(
-          untracked(this.drag),
-          untracked(this.layout),
-          untracked(this.layoutId),
-        );
-        if (!hasMeasureLayout) return;
-
-        // Match Framer's getSnapshotBeforeUpdate -> componentDidUpdate flow.
-        // If we already captured a pre-render snapshot this cycle, only commit
-        // the update in the write phase and avoid a second post-render willUpdate().
-        if (this.pendingProjectionDidUpdate) {
-          this.pendingProjectionDidUpdate = false;
-          this.pendingNotifyDidUpdate = true;
-          return;
-        }
-
-        // When layoutDependency is set and stable, skip the manual snapshot but
-        // still run willUpdate()+didUpdate() so projection.layout stays current.
-        // Without the manual snapshot, willUpdate() measures the element at its
-        // CURRENT position → didUpdate() re-measures the same → no delta → no animation.
-        // But projection.layout is updated, so cleanup snapshots the correct position.
-        const dep = untracked(this.layoutDependency);
-        const depStable = dep !== undefined && dep === this.prevLayoutDependency;
-
-        // If willUpdate wasn't already triggered by the effect (no input changes),
-        // manually provide a snapshot from the previous layout measurement.
-        // This handles DOM reorders where Angular's @for moves elements without
-        // any directive inputs changing. Setting snapshot BEFORE willUpdate() is
-        // critical: willUpdate's updateSnapshot() has a guard `if (this.snapshot) return`
-        // so our manually-set snapshot is preserved.
-        // Skip when layoutDependency is stable — prevents animations from external
-        // page shifts (e.g., content above growing and pushing this element down).
-        if (
-          !depStable &&
-          !this.projection.isLayoutDirty &&
-          this.projection.layout !== undefined &&
-          this.projection.snapshot === undefined
-        ) {
-          this.projection.snapshot = getCachedLayoutSnapshot(this.projection);
-        }
-
-        this.projection.willUpdate();
-        this.pendingNotifyDidUpdate = true;
+        this.handleFlipEarlyRead();
       },
       write: () => {
-        if (!this.pendingNotifyDidUpdate || !this.projection) return;
-        this.pendingNotifyDidUpdate = false;
-        notifyDidUpdate(this.projection);
+        this.handleFlipWrite();
       },
-    });
-
-    this.destroyRef.onDestroy(() => {
-      // Angular's actual order: DOM detach (checks lView[ANIMATIONS].leave) → then DestroyRef.
-      // If registerLeaveAnimation() wrote to lView[ANIMATIONS].leave, the element is still in
-      // DOM at this point — Angular skipped immediate removal. We start the exit animation here
-      // and manually remove the element when it completes.
-      const exitVal = untracked(this.exit);
-      const hasExit =
-        exitVal !== undefined &&
-        this.presenceContext === null &&
-        this.ve !== null &&
-        this.leaveRegistered;
-      const skipLeaveAnimation = hasExit && this.shouldSkipLeaveAnimation();
-      const queueRepairInjector = this.getAnimationQueueInjector();
-
-      if (this.leaveRegistered) {
-        if (skipLeaveAnimation) {
-          this.flushAngularAnimationQueue();
-        } else {
-          this.ensureAngularAnimationQueueScheduler();
-        }
-        if (queueRepairInjector !== null) {
-          afterNextRender(
-            () => {
-              if (skipLeaveAnimation) {
-                this.flushAngularAnimationQueue();
-              } else {
-                this.ensureAngularAnimationQueueScheduler();
-              }
-            },
-            { injector: queueRepairInjector },
-          );
-        }
-      }
-
-      this.destroyed = true;
-      this.parentMotion?.orchestrationChildren.delete(this);
-      this.cancelOrchestration();
-
-      if (this.projection) {
-        const preserveProjectionOnUnmount = Boolean(this.projection.options.layoutId);
-        cleanupProjection(this.projection, this.layoutGroup);
-        if (this.ve && preserveProjectionOnUnmount) {
-          this.ve.projection = null;
-        }
-        this.projection = null;
-      }
-      if (this.ve !== null && (!hasExit || skipLeaveAnimation)) {
-        unmountVisualElement(this.ve);
-        this.ve = null;
-      }
-      // If leave was registered but we're not animating (e.g. [exit] removed, VE gone,
-      // or router teardown should bypass exit), resolve Angular's pending promises
-      // so view destruction never stalls.
-      if (this.leaveRegistered && !hasExit) {
-        this.resolveLeavePromises();
-        this.cleanupLeaveMapEntry();
-      }
-      if (this.leaveRegistered && skipLeaveAnimation) {
-        this.cleanupLeaveMapEntry();
-        this.removeRoutedHostIfPresent();
-      }
-      this.reorderPointX?.destroy();
-      this.reorderPointX = null;
-      this.reorderPointY?.destroy();
-      this.reorderPointY = null;
-      this.pendingProjectionDidUpdate = false;
-      this.pendingNotifyDidUpdate = false;
-      this.mounted = false;
-
-      // Start exit animation directly — don't depend on Angular's animation queue scheduler.
-      if (hasExit && !skipLeaveAnimation) {
-        this.startLeaveAnimation(exitVal);
-      }
     });
   }
 
-  private mount(): void {
+  private handleFlipEarlyRead(): void {
+    if (!this.projection) return;
+
+    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
+      untracked(this.drag),
+      untracked(this.layout),
+      untracked(this.layoutId),
+    );
+    if (!hasMeasureLayout) return;
+
+    // Match Framer's getSnapshotBeforeUpdate -> componentDidUpdate flow.
+    // If we already captured a pre-render snapshot this cycle, only commit
+    // the update in the write phase and avoid a second post-render willUpdate().
+    if (this.pendingProjectionDidUpdate) {
+      this.pendingProjectionDidUpdate = false;
+      this.pendingNotifyDidUpdate = true;
+      return;
+    }
+
+    // When layoutDependency is set and stable, skip the manual snapshot but
+    // still run willUpdate()+didUpdate() so projection.layout stays current.
+    // Without the manual snapshot, willUpdate() measures the element at its
+    // CURRENT position → didUpdate() re-measures the same → no delta → no animation.
+    // But projection.layout is updated, so cleanup snapshots the correct position.
+    const dep = untracked(this.layoutDependency);
+    const depStable = dep !== undefined && dep === this.prevLayoutDependency;
+
+    // If willUpdate wasn't already triggered by the effect (no input changes),
+    // manually provide a snapshot from the previous layout measurement.
+    // This handles DOM reorders where Angular's @for moves elements without
+    // any directive inputs changing. Setting snapshot BEFORE willUpdate() is
+    // critical: willUpdate's updateSnapshot() has a guard `if (this.snapshot) return`
+    // so our manually-set snapshot is preserved.
+    // Skip when layoutDependency is stable — prevents animations from external
+    // page shifts (e.g., content above growing and pushing this element down).
+    if (
+      !depStable &&
+      !this.projection.isLayoutDirty &&
+      this.projection.layout !== undefined &&
+      this.projection.snapshot === undefined
+    ) {
+      this.projection.snapshot = getCachedLayoutSnapshot(this.projection);
+    }
+
+    this.projection.willUpdate();
+    this.pendingNotifyDidUpdate = true;
+  }
+
+  private handleFlipWrite(): void {
+    if (!this.pendingNotifyDidUpdate || !this.projection) return;
+    this.pendingNotifyDidUpdate = false;
+    notifyDidUpdate(this.projection);
+  }
+
+  private setupDestroyLifecycle(): void {
+    this.destroyRef.onDestroy(() => {
+      this.handleDestroy();
+    });
+  }
+
+  private handleDestroy(): void {
+    // Angular's actual order: DOM detach (checks lView[ANIMATIONS].leave) → then DestroyRef.
+    // If the direct leave controller wrote to Angular's leave map, the element is still in
+    // DOM at this point — Angular skipped immediate removal. We start the exit animation here
+    // and manually remove the element when it completes.
     const exitVal = untracked(this.exit);
-    const { initial, animate } = this.resolveExitDefaults(
-      untracked(this.initial),
-      untracked(this.animate),
-      exitVal,
-    );
-    const transition = untracked(this.transition);
-    const variants = untracked(this.variants);
-    const style = untracked(this.style);
-    const whileHover = untracked(this.whileHover);
-    const whileTap = untracked(this.whileTap);
-    const whileFocus = untracked(this.whileFocus);
-    const globalTapTarget = untracked(this.globalTapTarget);
-    const whileInView = untracked(this.whileInView);
-    const viewport = untracked(this.viewport);
-    const drag = untracked(this.drag);
-    const whileDrag = untracked(this.whileDrag);
-    const dragConstraints = untracked(this.dragConstraints);
-    const dragElastic = untracked(this.dragElastic);
-    const dragMomentum = untracked(this.dragMomentum);
-    const dragTransition = untracked(this.dragTransition);
-    const dragX = untracked(this.dragX);
-    const dragY = untracked(this.dragY);
-    const dragSnapToOrigin = untracked(this.dragSnapToOrigin);
-    const dragDirectionLock = untracked(this.dragDirectionLock);
-    const dragListener = untracked(this.dragListener);
-    const dragPropagation = untracked(this.dragPropagation);
-    const layoutVal = untracked(this.layout);
-    const layoutIdVal = untracked(this.layoutId);
-    const layoutScrollVal = untracked(this.layoutScroll);
-    const layoutRootVal = untracked(this.layoutRoot);
-    const layoutDependencyVal = untracked(this.layoutDependency);
+    const hasExit =
+      exitVal !== undefined &&
+      this.presenceContext === null &&
+      this.ve !== null &&
+      this.directLeave.isRegistered();
+    const skipLeaveAnimation = hasExit && this.directLeave.shouldSkipLeaveAnimation();
+    this.directLeave.setSkipLeaveAnimationOnDestroy(skipLeaveAnimation);
 
-    const props = this.buildProps(
-      initial,
-      animate,
-      transition,
-      variants,
-      style,
-      whileHover,
-      whileTap,
-      whileFocus,
-      globalTapTarget,
-      whileInView,
-      viewport,
-      exitVal,
-      drag,
-      whileDrag,
-      dragConstraints,
-      dragElastic,
-      dragMomentum,
-      dragTransition,
-      dragX,
-      dragY,
-      dragSnapToOrigin,
-      dragDirectionLock,
-      dragListener,
-      dragPropagation,
-      layoutVal,
-      layoutIdVal,
-      layoutScrollVal,
-      layoutRootVal,
-      layoutDependencyVal,
-    );
+    this.destroyed = true;
+    this.parentMotion?.orchestrationChildren.delete(this);
+    this.cancelOrchestration();
 
-    const hasMeasureLayout = this.hasMeasureLayoutFeatures(drag, layoutVal, layoutIdVal);
+    if (this.projection) {
+      const preserveProjectionOnUnmount = Boolean(this.projection.options.layoutId);
+      cleanupProjection(this.projection, this.layoutGroup);
+      if (this.ve && preserveProjectionOnUnmount) {
+        this.ve.projection = null;
+      }
+      this.projection = null;
+    }
+    const shouldAnimateLeave = hasExit && !skipLeaveAnimation;
+
+    if (this.ve !== null && !shouldAnimateLeave) {
+      unmountVisualElement(this.ve);
+      this.ve = null;
+    }
+
+    // Exactly one of these three branches runs when leave is registered:
+    //   1. Exit animation plays → start() handles cleanup on completion
+    //   2. No [exit] binding (removed or VE gone) → resolve promises so view destruction unblocks
+    //   3. Route teardown detected → skip animation and remove routed host
+    if (shouldAnimateLeave) {
+      // Start exit animation directly — don't depend on Angular's animation queue scheduler.
+      this.directLeave.start(exitVal);
+    } else if (this.directLeave.isRegistered() && !hasExit) {
+      this.directLeave.cleanupAfterMissingExit();
+    } else if (this.directLeave.isRegistered() && skipLeaveAnimation) {
+      this.directLeave.cleanupAfterSkippedRouteTeardown();
+    }
+
+    this.reorderPointX?.destroy();
+    this.reorderPointX = null;
+    this.reorderPointY?.destroy();
+    this.reorderPointY = null;
+    this.pendingProjectionDidUpdate = false;
+    this.pendingNotifyDidUpdate = false;
+    this.mounted = false;
+  }
+
+  private mount(): void {
+    const inputs = this.readMotionInputsUntracked();
+    const props = this.buildProps(inputs);
+
+    const hasMeasureLayout = this.hasMeasureLayoutFeatures(
+      inputs.drag,
+      inputs.layout,
+      inputs.layoutId,
+    );
 
     const presenceCtx = this.buildPresenceContext(this.presenceContext?.isPresent ?? true);
 
     // Cancel any active leave animation at the same parent (fast @if toggle).
     // If a sibling is mid-leave, snapshot its values as initial so the new
     // element reverses from the exit position — matching *ngmPresence behavior.
-    if (exitVal !== undefined && this.presenceContext === null) {
-      const snapshot = this.cancelActiveLeave();
+    if (inputs.exit !== undefined && this.presenceContext === null) {
+      const snapshot = this.directLeave.cancelActiveLeave();
       if (snapshot) {
         props.initial = snapshot;
       }
@@ -629,7 +488,7 @@ export class NgmMotionDirective implements OnInit {
     this.ve = createVisualElement({
       props: mountProps,
       parent: this.parentMotion?.ve ?? undefined,
-      blockInitialAnimation: initial === false,
+      blockInitialAnimation: inputs.initial === false,
       presenceContext: presenceCtx,
       allowProjection: true,
     });
@@ -664,73 +523,108 @@ export class NgmMotionDirective implements OnInit {
         { useCachedLayoutSnapshot: false },
       );
       notifyDidUpdate(this.projection);
-      this.prevLayoutDependency = layoutDependencyVal;
+      this.prevLayoutDependency = inputs.layoutDependency;
     }
 
     // Register leave animation dynamically when [exit] is set (without *ngmPresence).
     // Must happen after mount so ɵgetLContext finds the element in the LView.
-    if (exitVal !== undefined && this.presenceContext === null) {
-      this.registerLeaveAnimation();
+    if (inputs.exit !== undefined && this.presenceContext === null) {
+      this.directLeave.register();
     }
 
     this.mounted = true;
   }
 
-  private buildProps(
-    initial: TargetAndTransition | VariantLabels | boolean | undefined,
-    animate: TargetAndTransition | VariantLabels | boolean | undefined,
-    transition: Transition | undefined,
-    variants: Variants | undefined,
-    style: MotionStyle | undefined,
-    whileHover?: TargetAndTransition | VariantLabels,
-    whileTap?: TargetAndTransition | VariantLabels,
-    whileFocus?: TargetAndTransition | VariantLabels,
-    globalTapTarget?: boolean,
-    whileInView?: TargetAndTransition | VariantLabels,
-    viewport?: ViewportOptions,
-    exitVal?: TargetAndTransition | VariantLabels,
-    drag?: boolean | DragDirection,
-    whileDrag?: TargetAndTransition | VariantLabels,
-    dragConstraints?: BoundingBox | HTMLElement,
-    dragElastic?: boolean | number | Partial<BoundingBox>,
-    dragMomentum?: boolean,
-    dragTransition?: Record<string, unknown>,
-    dragX?: MotionValue<number>,
-    dragY?: MotionValue<number>,
-    dragSnapToOrigin?: boolean,
-    dragDirectionLock?: boolean,
-    dragListener?: boolean,
-    dragPropagation?: boolean,
-    layoutVal?: boolean | 'position' | 'size' | 'preserve-aspect',
-    layoutIdVal?: string,
-    layoutScrollVal?: boolean,
-    layoutRootVal?: boolean,
-    layoutDependencyVal?: unknown,
-  ): MotionProps {
-    const mergedTransition = transition ?? this.config?.transition;
-    const resolvedStyle = this.getResolvedStyle(style, dragX, dragY);
-    const props: MotionProps = {};
+  private readMotionInputs(): MotionInputSnapshot {
+    const exit = this.exit();
+    const { initial, animate } = this.resolveExitDefaults(this.initial(), this.animate(), exit);
 
-    if (initial !== undefined) props.initial = initial;
-    // Use parent-propagated animate if this child has no own [animate]
-    const effectiveAnimate = animate ?? this.propagatedAnimate;
-    if (effectiveAnimate !== undefined) props.animate = effectiveAnimate;
-    if (mergedTransition !== undefined) props.transition = mergedTransition;
-    if (variants !== undefined) props.variants = variants;
-    if (resolvedStyle !== undefined) props.style = resolvedStyle;
-    if (exitVal !== undefined) props.exit = exitVal;
+    return {
+      initial,
+      animate,
+      transition: this.transition(),
+      variants: this.variants(),
+      style: this.style(),
+      whileHover: this.whileHover(),
+      whileTap: this.whileTap(),
+      whileFocus: this.whileFocus(),
+      globalTapTarget: this.globalTapTarget(),
+      whileInView: this.whileInView(),
+      viewport: this.viewport(),
+      exit,
+      drag: this.drag(),
+      whileDrag: this.whileDrag(),
+      dragConstraints: this.dragConstraints(),
+      dragElastic: this.dragElastic(),
+      dragMomentum: this.dragMomentum(),
+      dragTransition: this.dragTransition(),
+      dragX: this.dragX(),
+      dragY: this.dragY(),
+      dragSnapToOrigin: this.dragSnapToOrigin(),
+      dragDirectionLock: this.dragDirectionLock(),
+      dragListener: this.dragListener(),
+      dragPropagation: this.dragPropagation(),
+      layout: this.layout(),
+      layoutId: this.layoutId(),
+      layoutScroll: this.layoutScroll(),
+      layoutRoot: this.layoutRoot(),
+      layoutDependency: this.layoutDependency(),
+    };
+  }
 
-    // Gesture props
-    if (whileHover !== undefined) props.whileHover = whileHover;
-    if (whileTap !== undefined) props.whileTap = whileTap;
-    if (whileFocus !== undefined) props.whileFocus = whileFocus;
+  private readMotionInputsUntracked(): MotionInputSnapshot {
+    return untracked(() => this.readMotionInputs());
+  }
+
+  private buildProps(inputs: MotionInputSnapshot): MotionProps {
+    const mergedTransition = inputs.transition ?? this.config?.transition;
+    const resolvedStyle = this.getResolvedStyle(inputs.style, inputs.dragX, inputs.dragY);
+    const props = this.buildBaseMotionProps(inputs, mergedTransition, resolvedStyle);
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Angular adapts viewport.root and dragConstraints types (no React refs)
     const untypedProps = props as Record<string, unknown>;
-    if (globalTapTarget !== undefined) untypedProps['globalTapTarget'] = globalTapTarget;
-    if (whileInView !== undefined) props.whileInView = whileInView;
-    if (viewport !== undefined) untypedProps['viewport'] = viewport;
 
-    // Wire event callbacks to Angular outputs (guardedEmit checks this.destroyed).
+    this.applyGestureProps(props, untypedProps, inputs);
+    this.attachAnimationCallbacks(props);
+    this.applyDragProps(props, untypedProps, inputs);
+    this.applyLayoutProps(untypedProps, inputs);
+    this.attachLayoutCallbacks(untypedProps);
+    this.hoistRepeatTransitions(props);
+
+    return props;
+  }
+
+  private buildBaseMotionProps(
+    inputs: MotionInputSnapshot,
+    mergedTransition: Transition | undefined,
+    resolvedStyle: MotionStyle | undefined,
+  ): MotionProps {
+    const props: MotionProps = {};
+
+    if (inputs.initial !== undefined) props.initial = inputs.initial;
+    const effectiveAnimate = inputs.animate ?? this.propagatedAnimate;
+    if (effectiveAnimate !== undefined) props.animate = effectiveAnimate;
+    if (mergedTransition !== undefined) props.transition = mergedTransition;
+    if (inputs.variants !== undefined) props.variants = inputs.variants;
+    if (resolvedStyle !== undefined) props.style = resolvedStyle;
+    if (inputs.exit !== undefined) props.exit = inputs.exit;
+
+    return props;
+  }
+
+  private applyGestureProps(
+    props: MotionProps,
+    untypedProps: Record<string, unknown>,
+    inputs: MotionInputSnapshot,
+  ): void {
+    if (inputs.whileHover !== undefined) props.whileHover = inputs.whileHover;
+    if (inputs.whileTap !== undefined) props.whileTap = inputs.whileTap;
+    if (inputs.whileFocus !== undefined) props.whileFocus = inputs.whileFocus;
+    if (inputs.globalTapTarget !== undefined) untypedProps['globalTapTarget'] = inputs.globalTapTarget;
+    if (inputs.whileInView !== undefined) props.whileInView = inputs.whileInView;
+    if (inputs.viewport !== undefined) untypedProps['viewport'] = inputs.viewport;
+  }
+
+  private attachAnimationCallbacks(props: MotionProps): void {
     props.onAnimationStart = this.guardedEmit(this.animationStart);
     props.onAnimationComplete = this.guardedEmit(this.animationComplete);
     props.onUpdate = this.guardedEmit(this.update);
@@ -741,28 +635,32 @@ export class NgmMotionDirective implements OnInit {
     props.onTapCancel = this.guardedVoidEmit(this.tapCancel);
     props.onViewportEnter = this.guardedVoidEmit(this.viewportEnter);
     props.onViewportLeave = this.guardedVoidEmit(this.viewportLeave);
+  }
 
-    // Drag props — use untypedProps for dragConstraints (Angular accepts HTMLElement, motion-dom expects React ref)
-    const p = untypedProps;
-    if (drag !== undefined) p['drag'] = drag;
-    if (whileDrag !== undefined) props.whileDrag = whileDrag;
-    if (dragConstraints !== undefined) p['dragConstraints'] = dragConstraints;
-    if (dragElastic !== undefined) p['dragElastic'] = dragElastic;
-    if (dragMomentum !== undefined) p['dragMomentum'] = dragMomentum;
-    if (dragTransition !== undefined) p['dragTransition'] = dragTransition;
-    if (dragX !== undefined) p['_dragX'] = dragX;
-    if (dragY !== undefined) p['_dragY'] = dragY;
-    if (dragSnapToOrigin !== undefined) p['dragSnapToOrigin'] = dragSnapToOrigin;
-    if (dragDirectionLock !== undefined) p['dragDirectionLock'] = dragDirectionLock;
-    if (dragListener !== undefined) p['dragListener'] = dragListener;
-    if (dragPropagation !== undefined) p['dragPropagation'] = dragPropagation;
+  private applyDragProps(
+    props: MotionProps,
+    untypedProps: Record<string, unknown>,
+    inputs: MotionInputSnapshot,
+  ): void {
+    if (inputs.drag !== undefined) untypedProps['drag'] = inputs.drag;
+    if (inputs.whileDrag !== undefined) props.whileDrag = inputs.whileDrag;
+    if (inputs.dragConstraints !== undefined) untypedProps['dragConstraints'] = inputs.dragConstraints;
+    if (inputs.dragElastic !== undefined) untypedProps['dragElastic'] = inputs.dragElastic;
+    if (inputs.dragMomentum !== undefined) untypedProps['dragMomentum'] = inputs.dragMomentum;
+    if (inputs.dragTransition !== undefined) untypedProps['dragTransition'] = inputs.dragTransition;
+    if (inputs.dragX !== undefined) untypedProps['_dragX'] = inputs.dragX;
+    if (inputs.dragY !== undefined) untypedProps['_dragY'] = inputs.dragY;
+    if (inputs.dragSnapToOrigin !== undefined) untypedProps['dragSnapToOrigin'] = inputs.dragSnapToOrigin;
+    if (inputs.dragDirectionLock !== undefined) untypedProps['dragDirectionLock'] = inputs.dragDirectionLock;
+    if (inputs.dragListener !== undefined) untypedProps['dragListener'] = inputs.dragListener;
+    if (inputs.dragPropagation !== undefined) untypedProps['dragPropagation'] = inputs.dragPropagation;
 
-    p['onDragStart'] = () => {
+    untypedProps['onDragStart'] = () => {
       if (this.destroyed) return;
       this.reorderItem?.onDragStart();
       this.dragStart.emit();
     };
-    p['onDrag'] = (_event: PointerEvent, info: PanInfo) => {
+    untypedProps['onDrag'] = (_event: PointerEvent, info: PanInfo) => {
       if (this.destroyed) return;
       const reorderItem = this.reorderItem;
       const axis = reorderItem?.getAxis();
@@ -780,81 +678,88 @@ export class NgmMotionDirective implements OnInit {
       }
       this.dragMove.emit();
     };
-    p['onDragEnd'] = () => {
+    untypedProps['onDragEnd'] = () => {
       if (this.destroyed) return;
       this.reorderItem?.onDragEnd();
       this.dragEnd.emit();
     };
-    p['onDirectionLock'] = this.guardedVoidEmit(this.directionLock);
+    untypedProps['onDirectionLock'] = this.guardedVoidEmit(this.directionLock);
+  }
 
-    // Layout props
-    if (layoutVal !== undefined) p['layout'] = layoutVal;
-    if (layoutIdVal !== undefined) p['layoutId'] = layoutIdVal;
-    if (layoutScrollVal !== undefined) p['layoutScroll'] = layoutScrollVal;
-    if (layoutRootVal !== undefined) p['layoutRoot'] = layoutRootVal;
-    if (layoutDependencyVal !== undefined) p['layoutDependency'] = layoutDependencyVal;
+  private applyLayoutProps(
+    untypedProps: Record<string, unknown>,
+    inputs: MotionInputSnapshot,
+  ): void {
+    if (inputs.layout !== undefined) untypedProps['layout'] = inputs.layout;
+    if (inputs.layoutId !== undefined) untypedProps['layoutId'] = inputs.layoutId;
+    if (inputs.layoutScroll !== undefined) untypedProps['layoutScroll'] = inputs.layoutScroll;
+    if (inputs.layoutRoot !== undefined) untypedProps['layoutRoot'] = inputs.layoutRoot;
+    if (inputs.layoutDependency !== undefined) untypedProps['layoutDependency'] = inputs.layoutDependency;
+  }
 
-    // Layout animation event callbacks
-    p['onLayoutAnimationStart'] = this.guardedVoidEmit(this.layoutAnimationStart);
-    p['onLayoutAnimationComplete'] = this.guardedVoidEmit(this.layoutAnimationComplete);
-    p['onLayoutMeasure'] = (measured: Box) => {
+  private attachLayoutCallbacks(untypedProps: Record<string, unknown>): void {
+    untypedProps['onLayoutAnimationStart'] = this.guardedVoidEmit(this.layoutAnimationStart);
+    untypedProps['onLayoutAnimationComplete'] = this.guardedVoidEmit(this.layoutAnimationComplete);
+    untypedProps['onLayoutMeasure'] = (measured: Box) => {
       if (this.destroyed) return;
       this.reorderItem?.registerLayout(measured);
     };
+  }
 
-    // ── Hoist repeat into per-target transitions ──
+  private hoistRepeatTransitions(props: MotionProps): void {
     // When the top-level transition has `repeat` and gesture states are defined,
     // embed the full transition (incl. repeat) into each animation target and
     // strip repeat from the top-level. This prevents deactivation fallback
     // animations (which use the default transition) from repeating infinitely.
-    if (props.transition !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Transition union type doesn't expose repeat directly
-      const tr = props.transition as Record<string, unknown>;
-      if (tr['repeat'] !== undefined && tr['repeat'] !== 0) {
-        const hasObjectGesture =
-          isObjectTarget(props.whileInView) ||
-          isObjectTarget(props.whileHover) ||
-          isObjectTarget(props.whileTap) ||
-          isObjectTarget(props.whileFocus) ||
-          isObjectTarget(props.whileDrag);
+    if (props.transition === undefined) return;
 
-        if (hasObjectGesture) {
-          const fullTr = props.transition;
-          const embedRepeat = (
-            target: TargetAndTransition | VariantLabels | undefined,
-          ): typeof target => {
-            if (target === undefined || typeof target !== 'object' || Array.isArray(target))
-              return target;
-            const existing = target.transition;
-            /* eslint-disable @typescript-eslint/consistent-type-assertions -- Transition union type can't be spread directly, cast to object for merge */
-            const merged = existing
-              ? { ...(fullTr as object), ...(existing as object) }
-              : fullTr;
-            return { ...target, transition: merged } as TargetAndTransition;
-            /* eslint-enable @typescript-eslint/consistent-type-assertions */
-          };
-
-          // Embed full transition (incl. repeat) into animate only if it's an object target
-          if (isObjectTarget(props.animate)) {
-            props.animate = embedRepeat(props.animate);
-          }
-          props.whileInView = embedRepeat(props.whileInView);
-          props.whileHover = embedRepeat(props.whileHover);
-          props.whileTap = embedRepeat(props.whileTap);
-          props.whileFocus = embedRepeat(props.whileFocus);
-          props.whileDrag = embedRepeat(props.whileDrag);
-
-          // Strip repeat-related keys from top-level so fallback animations finish
-          const { repeat: _r, repeatType: _rt, repeatDelay: _rd, ...rest } = tr;
-          // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- reconstructing Transition without repeat keys
-          props.transition = (Object.keys(rest).length > 0 ? rest : undefined) as
-            | Transition
-            | undefined;
-        }
-      }
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Transition union type doesn't expose repeat directly
+    const transitionRecord = props.transition as Record<string, unknown>;
+    if (transitionRecord['repeat'] === undefined || transitionRecord['repeat'] === 0) {
+      return;
     }
 
-    return props;
+    const hasObjectGesture =
+      isObjectTarget(props.whileInView) ||
+      isObjectTarget(props.whileHover) ||
+      isObjectTarget(props.whileTap) ||
+      isObjectTarget(props.whileFocus) ||
+      isObjectTarget(props.whileDrag);
+
+    if (!hasObjectGesture) return;
+
+    const fullTransition = props.transition;
+    const embedRepeat = (
+      target: TargetAndTransition | VariantLabels | undefined,
+    ): typeof target => {
+      if (target === undefined || typeof target !== 'object' || Array.isArray(target)) {
+        return target;
+      }
+
+      const existing = target.transition;
+      /* eslint-disable @typescript-eslint/consistent-type-assertions -- Transition union type can't be spread directly, cast to object for merge */
+      const merged = existing
+        ? { ...(fullTransition as object), ...(existing as object) }
+        : fullTransition;
+      return { ...target, transition: merged } as TargetAndTransition;
+      /* eslint-enable @typescript-eslint/consistent-type-assertions */
+    };
+
+    if (isObjectTarget(props.animate)) {
+      props.animate = embedRepeat(props.animate);
+    }
+    props.whileInView = embedRepeat(props.whileInView);
+    props.whileHover = embedRepeat(props.whileHover);
+    props.whileTap = embedRepeat(props.whileTap);
+    props.whileFocus = embedRepeat(props.whileFocus);
+    props.whileDrag = embedRepeat(props.whileDrag);
+
+    const { repeat: _repeat, repeatType: _repeatType, repeatDelay: _repeatDelay, ...rest } =
+      transitionRecord;
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- reconstructing Transition without repeat keys
+    props.transition = (Object.keys(rest).length > 0 ? rest : undefined) as
+      | Transition
+      | undefined;
   }
 
   private getResolvedStyle(
@@ -937,403 +842,7 @@ export class NgmMotionDirective implements OnInit {
   }
 
   private buildCurrentProps(): MotionProps {
-    const initial = untracked(this.initial);
-    const animate = untracked(this.animate);
-    const exitVal = untracked(this.exit);
-    const { initial: ri, animate: ra } = this.resolveExitDefaults(initial, animate, exitVal);
-    return this.buildProps(
-      ri,
-      ra,
-      untracked(this.transition),
-      untracked(this.variants),
-      untracked(this.style),
-      untracked(this.whileHover),
-      untracked(this.whileTap),
-      untracked(this.whileFocus),
-      untracked(this.globalTapTarget),
-      untracked(this.whileInView),
-      untracked(this.viewport),
-      untracked(this.exit),
-      untracked(this.drag),
-      untracked(this.whileDrag),
-      untracked(this.dragConstraints),
-      untracked(this.dragElastic),
-      untracked(this.dragMomentum),
-      untracked(this.dragTransition),
-      untracked(this.dragX),
-      untracked(this.dragY),
-      untracked(this.dragSnapToOrigin),
-      untracked(this.dragDirectionLock),
-      untracked(this.dragListener),
-      untracked(this.dragPropagation),
-      untracked(this.layout),
-      untracked(this.layoutId),
-      untracked(this.layoutScroll),
-      untracked(this.layoutRoot),
-      untracked(this.layoutDependency),
-    );
-  }
-
-  /**
-   * Stops all running WAAPI animations on a VisualElement and returns a snapshot
-   * of its current numeric values filtered to the given keys.
-   */
-  private static stopAndSnapshot(
-    ve: HTMLVisualElement,
-    filterKeys: Set<string>,
-  ): Record<string, number> {
-    /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-call -- internal VE/MotionValue APIs */
-    const valuesMap = (ve as any).values as Map<string, MotionValue>;
-    valuesMap.forEach((mv) => { (mv as any).animation?.stop(); });
-    /* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-call */
-    const snap: Record<string, number> = {};
-    for (const [k, v] of Object.entries(ve.latestValues)) {
-      if (typeof v === 'number' && filterKeys.has(k)) snap[k] = v;
-    }
-    return snap;
-  }
-
-  /**
-   * Dynamically registers a leave animation on this element's LView.
-   * Writes to the same internal data structure (lView[ANIMATIONS].leave) that
-   * Angular's `(animate.leave)` host binding uses, but only when [exit] is set.
-   * This avoids the overhead of Angular's leave pipeline (Promise, setTimeout,
-   * animationend listener) on every non-exit element removal.
-   *
-   * Uses ɵgetLContext (exported from @angular/core) and internal LView indices.
-   */
-  private registerLeaveAnimation(): void {
-    if (this.leaveRegistered) return;
-
-    const ctx = ɵgetLContext(this.element);
-    if (ctx === null) return;
-
-    const lView = ctx.lView;
-    if (lView === null) return;
-
-    const nodeIndex = ctx.nodeIndex;
-
-    // Cache for cleanupLeaveMapEntry() — avoids a second ɵgetLContext walk.
-    this.leaveNodeIndex = nodeIndex;
-    this.leaveLView = lView;
-
-    // The animateFn is a placeholder — its only purpose is to exist in the leave Map
-    // so Angular's removal path sees it and doesn't immediately remove the element.
-    // The actual animation is started from onDestroy → startLeaveAnimation().
-    // The promise keeps the element alive until we resolve it in cleanupLeaveState()
-    // (called by both completeLeave and the cancel path). Without resolving,
-    // Angular's view destruction pipeline blocks forever — breaking routing.
-    const animateFn: LeaveAnimateFn = () => ({
-      promise: this.shouldSkipLeaveAnimation()
-        ? Promise.resolve()
-        : new Promise<void>((resolve) => {
-            this.leaveResolvers.push(resolve);
-          }),
-    });
-    this.leaveAnimateFn = animateFn;
-    const animationData = (lView[LVIEW_ANIMATIONS] ??= {}) as LViewAnimations;
-    const leaveAnimations = (animationData.leave ??= new Map<number, LViewLeaveAnimationEntry>());
-    const nodeAnimations = leaveAnimations.get(nodeIndex) ?? { animateFns: [] };
-    nodeAnimations.animateFns.push(animateFn);
-    leaveAnimations.set(nodeIndex, nodeAnimations);
-    ɵallLeavingAnimations.add(lView[LVIEW_ID] as number);
-    this.leaveRegistered = true;
-  }
-
-  /**
-   * Starts the exit animation. Called from onDestroy when [exit] is defined and the
-   * leave animation was registered on the LView.
-   *
-   * At this point the element is still in DOM because registerLeaveAnimation() wrote
-   * to lView[ANIMATIONS].leave, which caused Angular's DOM detach path to skip
-   * immediate removal. We animate the element in-place, then manually remove it.
-   */
-  private startLeaveAnimation(exitVal: TargetAndTransition | VariantLabels): void {
-    // Set pointer-events:none during exit to prevent interaction with the leaving element.
-    this.element.style.pointerEvents = 'none';
-
-    const isObjectExit = isObjectTarget(exitVal);
-
-    // If exit includes height, apply overflow:hidden so content clips during collapse.
-    if (isObjectExit && 'height' in exitVal) {
-      this.element.style.overflow = 'hidden';
-    }
-
-    const userExitKeys = new Set(
-      isObjectExit ? Object.keys(exitVal).filter((k) => k !== 'transition') : [],
-    );
-
-    // Track for fast-toggle cancellation.
-    const parent = this.element.parentNode;
-    if (parent !== null) {
-      const leaveEntry = {
-        directive: this,
-        parent,
-        userExitKeys,
-      };
-      NgmMotionDirective.activeLeaves.add(leaveEntry);
-      this.leaveEntry = leaveEntry;
-
-      // Listen for Angular's cancelLeavingNodes — it dispatches a custom 'animationend'
-      // event with { detail: { cancel: true } } right before removing the element.
-      // Snapshot the mid-animation values so the incoming element can reverse from here.
-      // NOTE: Don't use { once: true } — a stray CSS animationend could consume it first.
-      this.cancelLeaveListener = (e: Event) => {
-        if (!(e instanceof CustomEvent)) return;
-        const detail: unknown = e.detail;
-        if (
-          typeof detail !== 'object' ||
-          detail === null ||
-          !('cancel' in detail) ||
-          detail.cancel !== true
-        )
-          return;
-        // Snapshot mid-animation values for reversal before cleanup destroys the VE.
-        const ve = this.ve;
-        if (ve !== null) {
-          const snapshot = NgmMotionDirective.stopAndSnapshot(ve, userExitKeys);
-          if (Object.keys(snapshot).length > 0) {
-            NgmMotionDirective.cancelledLeaveSnapshots.set(parent, snapshot);
-          }
-        }
-        this.cleanupLeaveState();
-      };
-      this.element.addEventListener('animationend', this.cancelLeaveListener);
-    }
-
-    this.leaveAnimationActive = true;
-
-    // Animate exit on the REAL element via the live VE — no cloning needed.
-    // motion-dom accepts both object targets and variant labels here.
-    const ve = this.ve;
-    if (ve === null) {
-      this.completeLeave();
-      return;
-    }
-    void animateVisualElement(ve, exitVal).then(
-      () => {
-        this.completeLeave();
-      },
-      () => {
-        this.completeLeave();
-      },
-    );
-  }
-
-  /** Shared cleanup for leave animation state (used by both cancel and completion paths). */
-  private cleanupLeaveState(): void {
-    this.leaveAnimationActive = false;
-    // Resolve Angular's leave promise so the view destruction pipeline can proceed.
-    // Nested view teardown can register multiple waiters for the same direct [exit].
-    this.resolveLeavePromises();
-    if (this.cancelLeaveListener) {
-      this.element.removeEventListener('animationend', this.cancelLeaveListener);
-      this.cancelLeaveListener = null;
-    }
-    if (this.ve !== null) {
-      unmountVisualElement(this.ve);
-      this.ve = null;
-    }
-    if (this.leaveEntry) {
-      NgmMotionDirective.activeLeaves.delete(this.leaveEntry);
-      this.leaveEntry = null;
-    }
-    this.cleanupLeaveMapEntry();
-  }
-
-  /** Completes the leave animation and removes the element from the DOM. */
-  private completeLeave(): void {
-    if (!this.leaveAnimationActive) return; // Already completed or cancelled.
-    this.cleanupLeaveState();
-    this.element.remove();
-  }
-
-  /** Removes this directive's leave registration from Angular's internal leave map. */
-  private cleanupLeaveMapEntry(): void {
-    const lView = this.leaveLView;
-    const animateFn = this.leaveAnimateFn;
-    if (lView === null || animateFn === null) return;
-
-    const animationData = lView[LVIEW_ANIMATIONS] as LViewAnimations | undefined;
-    const leaveAnimations = animationData?.leave;
-    const nodeAnimations = leaveAnimations?.get(this.leaveNodeIndex);
-    if (nodeAnimations) {
-      nodeAnimations.animateFns = nodeAnimations.animateFns.filter((fn) => fn !== animateFn);
-      if (nodeAnimations.animateFns.length === 0) {
-        leaveAnimations?.delete(this.leaveNodeIndex);
-      }
-    }
-    if (leaveAnimations !== undefined && leaveAnimations.size === 0 && animationData?.running === undefined) {
-      ɵallLeavingAnimations.delete(lView[LVIEW_ID] as number);
-    }
-    this.leaveAnimateFn = null;
-    this.leaveLView = null;
-  }
-
-  /** Route navigation teardown should bypass direct [exit] animations entirely. */
-  private shouldSkipLeaveAnimation(): boolean {
-    return this.router?.currentNavigation() !== null;
-  }
-
-  /** Finds Angular's internal animation queues across the current view chain. */
-  private getAngularAnimationQueues(): AngularAnimationQueue[] {
-    const lView = this.leaveLView;
-    if (lView === null) return [];
-
-    const queues: AngularAnimationQueue[] = [];
-    const seenViews = new Set<unknown[]>();
-    const seenQueues = new Set<AngularAnimationQueue>();
-    const pendingViews: unknown[][] = [lView];
-
-    while (pendingViews.length > 0) {
-      const currentView = pendingViews.pop();
-      if (currentView === undefined || seenViews.has(currentView)) continue;
-      seenViews.add(currentView);
-
-      const injector = currentView[LVIEW_INJECTOR] as
-        | { records?: Map<unknown, { value: unknown }> }
-        | undefined;
-      const records = injector?.records;
-      if (records !== undefined) {
-        for (const record of records.values()) {
-          const value = record.value;
-          if (
-            typeof value === 'object' &&
-            value !== null &&
-            'queue' in value &&
-            value.queue instanceof Set &&
-            'isScheduled' in value &&
-            typeof value.isScheduled === 'boolean' &&
-            'scheduler' in value &&
-            'injector' in value
-          ) {
-            const queue = value as AngularAnimationQueue;
-            if (!seenQueues.has(queue)) {
-              seenQueues.add(queue);
-              queues.push(queue);
-            }
-          }
-        }
-      }
-
-      const declarationView = currentView[LVIEW_DECLARATION_VIEW];
-      if (Array.isArray(declarationView)) {
-        pendingViews.push(declarationView);
-      }
-
-      const parentView = currentView[LVIEW_PARENT];
-      if (Array.isArray(parentView)) {
-        pendingViews.push(parentView);
-      }
-    }
-
-    return queues;
-  }
-
-  /** Returns the environment injector Angular uses for after-render scheduling. */
-  private getAnimationQueueInjector(): Injector | null {
-    const lView = this.leaveLView;
-    if (lView === null) return null;
-    return lView[LVIEW_INJECTOR] as Injector;
-  }
-
-  /** Schedules Angular's queued leave callback so host removal can complete later. */
-  private ensureAngularAnimationQueueScheduler(): void {
-    for (const animationQueue of this.getAngularAnimationQueues()) {
-      if (animationQueue.scheduler === null) {
-        animationQueue.scheduler = () => {
-          if (animationQueue.isScheduled) return;
-
-          afterNextRender(
-            () => {
-              animationQueue.isScheduled = false;
-              for (const animateFn of animationQueue.queue) {
-                animateFn();
-              }
-              animationQueue.queue.clear();
-            },
-            {
-              injector: animationQueue.injector as Injector,
-            },
-          );
-          animationQueue.isScheduled = true;
-        };
-      }
-
-      animationQueue.scheduler(animationQueue.injector);
-    }
-  }
-
-  /** Route teardown skips animations, so flush Angular's queued leave callback immediately. */
-  private flushAngularAnimationQueue(): void {
-    for (const animationQueue of this.getAngularAnimationQueues()) {
-      animationQueue.scheduler = null;
-      animationQueue.isScheduled = false;
-      for (const animateFn of animationQueue.queue) {
-        animateFn();
-      }
-      animationQueue.queue.clear();
-    }
-  }
-
-  /** Route teardown can leave the routed host behind, so remove that host directly. */
-  private removeRoutedHostIfPresent(): void {
-    const routedHost = this.getRoutedHostElement();
-    routedHost?.remove();
-  }
-
-  /** Finds the routed component host as the ancestor inserted directly after a router-outlet. */
-  private getRoutedHostElement(): HTMLElement | null {
-    let currentElement: HTMLElement | null = this.element;
-
-    while (currentElement !== null) {
-      if (currentElement.previousElementSibling?.tagName === 'ROUTER-OUTLET') {
-        return currentElement;
-      }
-      currentElement = currentElement.parentElement;
-    }
-
-    return null;
-  }
-
-  /**
-   * Cancels any active leave animation at this element's position (fast @if toggle).
-   * First checks `cancelledLeaveSnapshots` — populated when Angular's `cancelLeavingNodes`
-   * already removed the leaving element and our animationend listener saved its snapshot.
-   * Falls back to checking `activeLeaves` for a sibling still mid-leave.
-   * Returns a snapshot of the leaving element's animated values for reversal, or null.
-   */
-  private cancelActiveLeave(): Record<string, number> | null {
-    const parent = this.element.parentNode;
-    if (!parent) return null;
-
-    // Check the static snapshot store first — filled by the animationend listener
-    // in startLeaveAnimation when Angular's cancelLeavingNodes fires.
-    const snapshot = NgmMotionDirective.cancelledLeaveSnapshots.get(parent);
-    if (snapshot) {
-      NgmMotionDirective.cancelledLeaveSnapshots.delete(parent);
-      return snapshot;
-    }
-
-    // Fallback: check if a sibling is still mid-leave (e.g. *ngmPresence path).
-    const sibling = this.element.nextSibling;
-    for (const entry of NgmMotionDirective.activeLeaves) {
-      const leavingEl = entry.directive.element;
-      if (
-        entry.parent === parent &&
-        (leavingEl === sibling || leavingEl.nextSibling === this.element)
-      ) {
-        const leavingVe = entry.directive.ve;
-        if (leavingVe === null) continue;
-
-        const snap = NgmMotionDirective.stopAndSnapshot(leavingVe, entry.userExitKeys);
-
-        // Remove the leaving element immediately.
-        entry.directive.completeLeave();
-        return Object.keys(snap).length > 0 ? snap : null;
-      }
-    }
-    return null;
+    return this.buildProps(this.readMotionInputsUntracked());
   }
 
   // ── Orchestration (when / staggerChildren / delayChildren) ──

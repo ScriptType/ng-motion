@@ -1,6 +1,6 @@
 {
   "name": "@scripttype/ng-motion",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "peerDependencies": {
     "@angular/common": "^21.2.0",
     "@angular/core": "^21.2.0",
