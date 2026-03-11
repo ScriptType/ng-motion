@@ -2,6 +2,8 @@ import '../test-env';
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Router, provideRouter } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { motionValue } from 'motion-dom';
 import type { MotionStyle, Transition, Variants } from 'motion-dom';
 import { NgmMotionDirective } from './motion.directive';
@@ -90,6 +92,146 @@ describe('NgmMotionDirective', () => {
       expect(parent.ve).not.toBeNull();
       expect(child.ve).not.toBeNull();
       expect(child.ve?.parent).toBe(parent.ve);
+    });
+
+    it('keeps router navigation working when a routed component uses `[exit]` without presence', async () => {
+      @Component({
+        template: `
+          <section
+            ngmMotion
+            [animate]="{ opacity: 1 }"
+            [exit]="{ opacity: 0 }"
+            [transition]="{ duration: 0.01 }"
+          >
+            route-a
+          </section>
+        `,
+        imports: [NgmMotionDirective],
+      })
+      class RouteAComponent {}
+
+      @Component({
+        template: `<section class="route-b">route-b</section>`,
+      })
+      class RouteBComponent {}
+
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([
+            { path: '', component: RouteAComponent },
+            { path: 'b', component: RouteBComponent },
+          ]),
+        ],
+      });
+
+      const harness = await RouterTestingHarness.create('/');
+      expect(harness.routeNativeElement?.textContent).toContain('route-a');
+
+      await harness.navigateByUrl('/b', RouteBComponent);
+      await flushAnimations();
+
+      const router = TestBed.inject(Router);
+      expect(router.url).toBe('/b');
+      expect(harness.routeNativeElement?.textContent).toContain('route-b');
+      expect(harness.fixture.nativeElement.textContent).not.toContain('route-a');
+    });
+
+    it('keeps router navigation working when direct `[exit]` uses a variant label', async () => {
+      @Component({
+        template: `
+          <section
+            ngmMotion
+            [animate]="'visible'"
+            [exit]="'hidden'"
+            [variants]="variants"
+            [transition]="{ duration: 0.01 }"
+          >
+            route-a
+          </section>
+        `,
+        imports: [NgmMotionDirective],
+      })
+      class RouteAComponent {
+        readonly variants: Variants = {
+          visible: { opacity: 1 },
+          hidden: { opacity: 0 },
+        };
+      }
+
+      @Component({
+        template: `<section class="route-b">route-b</section>`,
+      })
+      class RouteBComponent {}
+
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([
+            { path: '', component: RouteAComponent },
+            { path: 'b', component: RouteBComponent },
+          ]),
+        ],
+      });
+
+      const harness = await RouterTestingHarness.create('/');
+      expect(harness.routeNativeElement?.textContent).toContain('route-a');
+
+      await harness.navigateByUrl('/b', RouteBComponent);
+      await flushAnimations();
+
+      const router = TestBed.inject(Router);
+      expect(router.url).toBe('/b');
+      expect(harness.routeNativeElement?.textContent).toContain('route-b');
+      expect(harness.fixture.nativeElement.textContent).not.toContain('route-a');
+    });
+
+    it('skips nested direct `[exit]` animations during router navigation teardown', async () => {
+      @Component({
+        template: `
+          <section class="route-a">
+            route-a
+            @if (show()) {
+              <article
+                ngmMotion
+                [animate]="{ opacity: 1 }"
+                [exit]="{ opacity: 0, height: 0 }"
+                [transition]="{ duration: 10 }"
+              >
+                child
+              </article>
+            }
+          </section>
+        `,
+        imports: [NgmMotionDirective],
+      })
+      class RouteAComponent {
+        readonly show = signal(true);
+      }
+
+      @Component({
+        template: `<section class="route-b">route-b</section>`,
+      })
+      class RouteBComponent {}
+
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([
+            { path: '', component: RouteAComponent },
+            { path: 'b', component: RouteBComponent },
+          ]),
+        ],
+      });
+
+      const harness = await RouterTestingHarness.create('/');
+      expect(harness.fixture.nativeElement.textContent).toContain('route-a');
+      expect(harness.fixture.nativeElement.textContent).toContain('child');
+
+      await harness.navigateByUrl('/b', RouteBComponent);
+
+      const router = TestBed.inject(Router);
+      expect(router.url).toBe('/b');
+      expect(harness.routeNativeElement?.textContent).toContain('route-b');
+      expect(harness.fixture.nativeElement.textContent).not.toContain('route-a');
+      expect(harness.fixture.nativeElement.textContent).not.toContain('child');
     });
   });
 

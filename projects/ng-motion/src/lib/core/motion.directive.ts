@@ -14,6 +14,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   OnInit,
   output,
@@ -21,6 +22,7 @@ import {
   ɵallLeavingAnimations,
   ɵgetLContext,
 } from '@angular/core';
+import { Router } from '@angular/router';
 import { animateVisualElement, isMotionValue, motionValue } from 'motion-dom';
 import type {
   AnimationDefinition,
@@ -83,7 +85,34 @@ interface OrchestrationConfig {
  *   node_modules/@angular/core/fesm2022/_effect-chunk2.mjs → search "const ID", "const ANIMATIONS"
  */
 const LVIEW_ID = 19;
+const LVIEW_INJECTOR = 9;
 const LVIEW_ANIMATIONS = 26;
+const LVIEW_PARENT = 3;
+const LVIEW_DECLARATION_VIEW = 14;
+
+type LeaveAnimateFn = () => { promise: Promise<void> };
+
+interface LViewLeaveAnimationEntry {
+  animateFns: LeaveAnimateFn[];
+  resolvers?: Array<() => void>;
+}
+
+interface LViewAnimations {
+  leave?: Map<number, LViewLeaveAnimationEntry>;
+  running?: Promise<void>;
+}
+
+interface AngularAnimationQueue {
+  queue: Set<() => void>;
+  isScheduled: boolean;
+  scheduler: ((injector: unknown) => void) | null;
+  injector: unknown;
+}
+
+/** Type guard for non-null, non-array objects (TargetAndTransition, not VariantLabels). */
+function isObjectTarget(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 @Directive({
   selector: '[ngmMotion]',
@@ -149,6 +178,7 @@ export class NgmMotionDirective implements OnInit {
   private readonly presenceContext = inject(PRESENCE_CONTEXT, { optional: true });
   private readonly layoutGroup = inject(LAYOUT_GROUP, { optional: true, skipSelf: true });
   private readonly reorderItem = inject(NgmReorderItemDirective, { optional: true, self: true });
+  private readonly router = inject(Router, { optional: true });
 
   // ── Internal ──
   /** @internal Exposed for parent-child VisualElement linking. */
@@ -168,6 +198,10 @@ export class NgmMotionDirective implements OnInit {
   /** Cached LView data from registerLeaveAnimation() for O(1) cleanup. */
   private leaveNodeIndex = -1;
   private leaveLView: unknown[] | null = null;
+  /** Cached animateFn identity for O(1) leave map cleanup. */
+  private leaveAnimateFn: LeaveAnimateFn | null = null;
+  /** Resolvers for Angular leave promises; route teardown may register multiple waiters per node. */
+  private readonly leaveResolvers: Array<() => void> = [];
   /** Listener for Angular's cancel-leaving-nodes event, stored for cleanup. */
   private cancelLeaveListener: ((e: Event) => void) | null = null;
   /** Reference to this directive's entry in activeLeaves for O(1) cleanup. */
@@ -199,7 +233,6 @@ export class NgmMotionDirective implements OnInit {
    * pick it up as its initial state in mount().
    */
   private static cancelledLeaveSnapshots = new WeakMap<Node, Record<string, number>>();
-
   ngOnInit(): void {
     prerenderVisualElementStyles(this.element, this.buildCurrentProps() as MotionNodeOptions); // eslint-disable-line @typescript-eslint/consistent-type-assertions -- viewport/drag types diverge
   }
@@ -212,6 +245,39 @@ export class NgmMotionDirective implements OnInit {
     return (
       layoutVal !== undefined || layoutIdVal !== undefined || (drag !== undefined && drag !== false)
     );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- infer from presenceContext to avoid duplicating its type
+  private buildPresenceContext(isPresent: boolean) {
+    return this.presenceContext
+      ? {
+          id: this.presenceContext.id,
+          isPresent,
+          register: this.presenceContext.register,
+          onExitComplete: this.presenceContext.onExitComplete,
+        }
+      : null;
+  }
+
+  /** Wraps a typed output emitter with a destroyed guard. */
+  private guardedEmit<T>(emitter: { emit(value: T): void }): (value: T) => void {
+    return (value: T) => {
+      if (!this.destroyed) emitter.emit(value);
+    };
+  }
+
+  /** Wraps a void output emitter with a destroyed guard (ignores callback arguments). */
+  private guardedVoidEmit(emitter: { emit(): void }): () => void {
+    return () => {
+      if (!this.destroyed) emitter.emit();
+    };
+  }
+
+  /** Resolves every pending Angular leave promise for this node. */
+  private resolveLeavePromises(): void {
+    while (this.leaveResolvers.length > 0) {
+      this.leaveResolvers.pop()?.();
+    }
   }
 
   constructor() {
@@ -316,17 +382,11 @@ export class NgmMotionDirective implements OnInit {
           this.prevLayoutDependency = layoutDependencyVal;
         }
 
-        const presenceCtx = this.presenceContext
-          ? {
-              id: this.presenceContext.id,
-              isPresent: isPresent ?? true,
-              register: this.presenceContext.register,
-              onExitComplete: this.presenceContext.onExitComplete,
-            }
-          : null;
+        const presenceCtx = this.buildPresenceContext(isPresent ?? true);
+        const hasDirectExit = exitVal !== undefined && this.presenceContext === null;
 
         // Dynamically register leave animation if [exit] was added after mount.
-        if (exitVal !== undefined && !this.leaveRegistered && this.presenceContext === null) {
+        if (hasDirectExit && !this.leaveRegistered) {
           this.registerLeaveAnimation();
         }
 
@@ -418,6 +478,28 @@ export class NgmMotionDirective implements OnInit {
         this.presenceContext === null &&
         this.ve !== null &&
         this.leaveRegistered;
+      const skipLeaveAnimation = hasExit && this.shouldSkipLeaveAnimation();
+      const queueRepairInjector = this.getAnimationQueueInjector();
+
+      if (this.leaveRegistered) {
+        if (skipLeaveAnimation) {
+          this.flushAngularAnimationQueue();
+        } else {
+          this.ensureAngularAnimationQueueScheduler();
+        }
+        if (queueRepairInjector !== null) {
+          afterNextRender(
+            () => {
+              if (skipLeaveAnimation) {
+                this.flushAngularAnimationQueue();
+              } else {
+                this.ensureAngularAnimationQueueScheduler();
+              }
+            },
+            { injector: queueRepairInjector },
+          );
+        }
+      }
 
       this.destroyed = true;
       this.parentMotion?.orchestrationChildren.delete(this);
@@ -431,9 +513,20 @@ export class NgmMotionDirective implements OnInit {
         }
         this.projection = null;
       }
-      if (this.ve !== null && !hasExit) {
+      if (this.ve !== null && (!hasExit || skipLeaveAnimation)) {
         unmountVisualElement(this.ve);
         this.ve = null;
+      }
+      // If leave was registered but we're not animating (e.g. [exit] removed, VE gone,
+      // or router teardown should bypass exit), resolve Angular's pending promises
+      // so view destruction never stalls.
+      if (this.leaveRegistered && !hasExit) {
+        this.resolveLeavePromises();
+        this.cleanupLeaveMapEntry();
+      }
+      if (this.leaveRegistered && skipLeaveAnimation) {
+        this.cleanupLeaveMapEntry();
+        this.removeRoutedHostIfPresent();
       }
       this.reorderPointX?.destroy();
       this.reorderPointX = null;
@@ -444,7 +537,7 @@ export class NgmMotionDirective implements OnInit {
       this.mounted = false;
 
       // Start exit animation directly — don't depend on Angular's animation queue scheduler.
-      if (hasExit) {
+      if (hasExit && !skipLeaveAnimation) {
         this.startLeaveAnimation(exitVal);
       }
     });
@@ -518,14 +611,7 @@ export class NgmMotionDirective implements OnInit {
 
     const hasMeasureLayout = this.hasMeasureLayoutFeatures(drag, layoutVal, layoutIdVal);
 
-    const presenceCtx = this.presenceContext
-      ? {
-          id: this.presenceContext.id,
-          isPresent: this.presenceContext.isPresent,
-          register: this.presenceContext.register,
-          onExitComplete: this.presenceContext.onExitComplete,
-        }
-      : null;
+    const presenceCtx = this.buildPresenceContext(this.presenceContext?.isPresent ?? true);
 
     // Cancel any active leave animation at the same parent (fast @if toggle).
     // If a sibling is mid-leave, snapshot its values as initial so the new
@@ -644,50 +730,17 @@ export class NgmMotionDirective implements OnInit {
     if (whileInView !== undefined) props.whileInView = whileInView;
     if (viewport !== undefined) untypedProps['viewport'] = viewport;
 
-    // Wire event callbacks to Angular outputs.
-    // These are read by VisualElement via getProps() when events fire.
-    props.onAnimationStart = (definition: AnimationDefinition) => {
-      if (this.destroyed) return;
-      this.animationStart.emit(definition);
-    };
-    props.onAnimationComplete = (definition: AnimationDefinition) => {
-      if (this.destroyed) return;
-      this.animationComplete.emit(definition);
-    };
-    props.onUpdate = (latest: ResolvedValues) => {
-      if (this.destroyed) return;
-      this.update.emit(latest);
-    };
-
-    // Gesture callbacks → Angular outputs
-    props.onHoverStart = () => {
-      if (this.destroyed) return;
-      this.hoverStart.emit();
-    };
-    props.onHoverEnd = () => {
-      if (this.destroyed) return;
-      this.hoverEnd.emit();
-    };
-    props.onTap = () => {
-      if (this.destroyed) return;
-      this.tap.emit();
-    };
-    props.onTapStart = () => {
-      if (this.destroyed) return;
-      this.tapStart.emit();
-    };
-    props.onTapCancel = () => {
-      if (this.destroyed) return;
-      this.tapCancel.emit();
-    };
-    props.onViewportEnter = () => {
-      if (this.destroyed) return;
-      this.viewportEnter.emit();
-    };
-    props.onViewportLeave = () => {
-      if (this.destroyed) return;
-      this.viewportLeave.emit();
-    };
+    // Wire event callbacks to Angular outputs (guardedEmit checks this.destroyed).
+    props.onAnimationStart = this.guardedEmit(this.animationStart);
+    props.onAnimationComplete = this.guardedEmit(this.animationComplete);
+    props.onUpdate = this.guardedEmit(this.update);
+    props.onHoverStart = this.guardedVoidEmit(this.hoverStart);
+    props.onHoverEnd = this.guardedVoidEmit(this.hoverEnd);
+    props.onTap = this.guardedVoidEmit(this.tap);
+    props.onTapStart = this.guardedVoidEmit(this.tapStart);
+    props.onTapCancel = this.guardedVoidEmit(this.tapCancel);
+    props.onViewportEnter = this.guardedVoidEmit(this.viewportEnter);
+    props.onViewportLeave = this.guardedVoidEmit(this.viewportLeave);
 
     // Drag props — use untypedProps for dragConstraints (Angular accepts HTMLElement, motion-dom expects React ref)
     const p = untypedProps;
@@ -732,10 +785,7 @@ export class NgmMotionDirective implements OnInit {
       this.reorderItem?.onDragEnd();
       this.dragEnd.emit();
     };
-    p['onDirectionLock'] = () => {
-      if (this.destroyed) return;
-      this.directionLock.emit();
-    };
+    p['onDirectionLock'] = this.guardedVoidEmit(this.directionLock);
 
     // Layout props
     if (layoutVal !== undefined) p['layout'] = layoutVal;
@@ -745,14 +795,8 @@ export class NgmMotionDirective implements OnInit {
     if (layoutDependencyVal !== undefined) p['layoutDependency'] = layoutDependencyVal;
 
     // Layout animation event callbacks
-    p['onLayoutAnimationStart'] = () => {
-      if (this.destroyed) return;
-      this.layoutAnimationStart.emit();
-    };
-    p['onLayoutAnimationComplete'] = () => {
-      if (this.destroyed) return;
-      this.layoutAnimationComplete.emit();
-    };
+    p['onLayoutAnimationStart'] = this.guardedVoidEmit(this.layoutAnimationStart);
+    p['onLayoutAnimationComplete'] = this.guardedVoidEmit(this.layoutAnimationComplete);
     p['onLayoutMeasure'] = (measured: Box) => {
       if (this.destroyed) return;
       this.reorderItem?.registerLayout(measured);
@@ -768,21 +812,11 @@ export class NgmMotionDirective implements OnInit {
       const tr = props.transition as Record<string, unknown>;
       if (tr['repeat'] !== undefined && tr['repeat'] !== 0) {
         const hasObjectGesture =
-          (props.whileInView !== undefined &&
-            typeof props.whileInView === 'object' &&
-            !Array.isArray(props.whileInView)) ||
-          (props.whileHover !== undefined &&
-            typeof props.whileHover === 'object' &&
-            !Array.isArray(props.whileHover)) ||
-          (props.whileTap !== undefined &&
-            typeof props.whileTap === 'object' &&
-            !Array.isArray(props.whileTap)) ||
-          (props.whileFocus !== undefined &&
-            typeof props.whileFocus === 'object' &&
-            !Array.isArray(props.whileFocus)) ||
-          (props.whileDrag !== undefined &&
-            typeof props.whileDrag === 'object' &&
-            !Array.isArray(props.whileDrag));
+          isObjectTarget(props.whileInView) ||
+          isObjectTarget(props.whileHover) ||
+          isObjectTarget(props.whileTap) ||
+          isObjectTarget(props.whileFocus) ||
+          isObjectTarget(props.whileDrag);
 
         if (hasObjectGesture) {
           const fullTr = props.transition;
@@ -801,12 +835,7 @@ export class NgmMotionDirective implements OnInit {
           };
 
           // Embed full transition (incl. repeat) into animate only if it's an object target
-          if (
-            props.animate !== undefined &&
-            typeof props.animate === 'object' &&
-            !Array.isArray(props.animate) &&
-            typeof props.animate !== 'boolean'
-          ) {
+          if (isObjectTarget(props.animate)) {
             props.animate = embedRepeat(props.animate);
           }
           props.whileInView = embedRepeat(props.whileInView);
@@ -874,11 +903,9 @@ export class NgmMotionDirective implements OnInit {
     animate: TargetAndTransition | VariantLabels | boolean | undefined;
   } {
     if (
-      exitVal === undefined ||
+      !isObjectTarget(exitVal) ||
       initial !== undefined ||
-      this.presenceContext !== null ||
-      typeof exitVal !== 'object' ||
-      Array.isArray(exitVal)
+      this.presenceContext !== null
     ) {
       return { initial, animate };
     }
@@ -990,27 +1017,26 @@ export class NgmMotionDirective implements OnInit {
     this.leaveNodeIndex = nodeIndex;
     this.leaveLView = lView;
 
-    // Mark this LView as having leave animations (checked by Angular's removal path).
-    ɵallLeavingAnimations.add(lView[LVIEW_ID]);
-
-    // Write animation function to lView[ANIMATIONS].leave — the same Map
-    // that ɵɵanimateLeaveListener populates during template creation.
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- typing the untyped LView slot
-    const animData = (lView[LVIEW_ANIMATIONS] ??= {}) as {
-      leave?: Map<number, { animateFns: (() => { promise: Promise<void> })[] }>;
-    };
-    const leaveMap = (animData.leave ??= new Map());
-
     // The animateFn is a placeholder — its only purpose is to exist in the leave Map
     // so Angular's removal path sees it and doesn't immediately remove the element.
     // The actual animation is started from onDestroy → startLeaveAnimation().
-    // Return a never-resolving promise to keep the element alive in Angular's pipeline
-    // (in case the animation queue scheduler IS initialized by another component).
-    // eslint-disable-next-line @typescript-eslint/no-empty-function -- Promise executor intentionally never resolves
-    function neverResolve(): void {}
-    const animateFn = (): { promise: Promise<void> } => ({ promise: new Promise<void>(neverResolve) });
-
-    leaveMap.set(nodeIndex, { animateFns: [animateFn] });
+    // The promise keeps the element alive until we resolve it in cleanupLeaveState()
+    // (called by both completeLeave and the cancel path). Without resolving,
+    // Angular's view destruction pipeline blocks forever — breaking routing.
+    const animateFn: LeaveAnimateFn = () => ({
+      promise: this.shouldSkipLeaveAnimation()
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            this.leaveResolvers.push(resolve);
+          }),
+    });
+    this.leaveAnimateFn = animateFn;
+    const animationData = (lView[LVIEW_ANIMATIONS] ??= {}) as LViewAnimations;
+    const leaveAnimations = (animationData.leave ??= new Map<number, LViewLeaveAnimationEntry>());
+    const nodeAnimations = leaveAnimations.get(nodeIndex) ?? { animateFns: [] };
+    nodeAnimations.animateFns.push(animateFn);
+    leaveAnimations.set(nodeIndex, nodeAnimations);
+    ɵallLeavingAnimations.add(lView[LVIEW_ID] as number);
     this.leaveRegistered = true;
   }
 
@@ -1026,7 +1052,7 @@ export class NgmMotionDirective implements OnInit {
     // Set pointer-events:none during exit to prevent interaction with the leaving element.
     this.element.style.pointerEvents = 'none';
 
-    const isObjectExit = typeof exitVal === 'object' && !Array.isArray(exitVal);
+    const isObjectExit = isObjectTarget(exitVal);
 
     // If exit includes height, apply overflow:hidden so content clips during collapse.
     if (isObjectExit && 'height' in exitVal) {
@@ -1039,48 +1065,52 @@ export class NgmMotionDirective implements OnInit {
 
     // Track for fast-toggle cancellation.
     const parent = this.element.parentNode;
-    if (parent === null) return;
-    const leaveEntry = {
-      directive: this,
-      parent,
-      userExitKeys,
-    };
-    NgmMotionDirective.activeLeaves.add(leaveEntry);
-    this.leaveEntry = leaveEntry;
+    if (parent !== null) {
+      const leaveEntry = {
+        directive: this,
+        parent,
+        userExitKeys,
+      };
+      NgmMotionDirective.activeLeaves.add(leaveEntry);
+      this.leaveEntry = leaveEntry;
 
-    // Listen for Angular's cancelLeavingNodes — it dispatches a custom 'animationend'
-    // event with { detail: { cancel: true } } right before removing the element.
-    // Snapshot the mid-animation values so the incoming element can reverse from here.
-    // NOTE: Don't use { once: true } — a stray CSS animationend could consume it first.
-    this.cancelLeaveListener = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail: unknown = e.detail;
-      if (typeof detail !== 'object' || detail === null || !('cancel' in detail) || detail.cancel !== true) return;
-      this.removeCancelLeaveListener();
-      const ve = this.ve;
-      if (ve === null) return;
-      // Stop WAAPI animations and snapshot mid-animation values for reversal.
-      const snapshot = NgmMotionDirective.stopAndSnapshot(ve, userExitKeys);
-      if (Object.keys(snapshot).length > 0) {
-        NgmMotionDirective.cancelledLeaveSnapshots.set(parent, snapshot);
-      }
-      // Mark as cancelled so completeLeave() is a no-op when the promise resolves.
-      this.leaveAnimationActive = false;
-      NgmMotionDirective.activeLeaves.delete(leaveEntry);
-      this.leaveEntry = null;
-      this.cleanupLeaveMapEntry();
-      if (this.ve !== null) {
-        unmountVisualElement(this.ve);
-        this.ve = null;
-      }
-    };
-    this.element.addEventListener('animationend', this.cancelLeaveListener);
+      // Listen for Angular's cancelLeavingNodes — it dispatches a custom 'animationend'
+      // event with { detail: { cancel: true } } right before removing the element.
+      // Snapshot the mid-animation values so the incoming element can reverse from here.
+      // NOTE: Don't use { once: true } — a stray CSS animationend could consume it first.
+      this.cancelLeaveListener = (e: Event) => {
+        if (!(e instanceof CustomEvent)) return;
+        const detail: unknown = e.detail;
+        if (
+          typeof detail !== 'object' ||
+          detail === null ||
+          !('cancel' in detail) ||
+          detail.cancel !== true
+        )
+          return;
+        // Snapshot mid-animation values for reversal before cleanup destroys the VE.
+        const ve = this.ve;
+        if (ve !== null) {
+          const snapshot = NgmMotionDirective.stopAndSnapshot(ve, userExitKeys);
+          if (Object.keys(snapshot).length > 0) {
+            NgmMotionDirective.cancelledLeaveSnapshots.set(parent, snapshot);
+          }
+        }
+        this.cleanupLeaveState();
+      };
+      this.element.addEventListener('animationend', this.cancelLeaveListener);
+    }
 
     this.leaveAnimationActive = true;
 
     // Animate exit on the REAL element via the live VE — no cloning needed.
-    if (this.ve === null || !isObjectExit) return;
-    void animateVisualElement(this.ve, exitVal).then(
+    // motion-dom accepts both object targets and variant labels here.
+    const ve = this.ve;
+    if (ve === null) {
+      this.completeLeave();
+      return;
+    }
+    void animateVisualElement(ve, exitVal).then(
       () => {
         this.completeLeave();
       },
@@ -1090,46 +1120,180 @@ export class NgmMotionDirective implements OnInit {
     );
   }
 
-  /** Removes the cancelLeaveListener if attached. */
-  private removeCancelLeaveListener(): void {
+  /** Shared cleanup for leave animation state (used by both cancel and completion paths). */
+  private cleanupLeaveState(): void {
+    this.leaveAnimationActive = false;
+    // Resolve Angular's leave promise so the view destruction pipeline can proceed.
+    // Nested view teardown can register multiple waiters for the same direct [exit].
+    this.resolveLeavePromises();
     if (this.cancelLeaveListener) {
       this.element.removeEventListener('animationend', this.cancelLeaveListener);
       this.cancelLeaveListener = null;
     }
+    if (this.ve !== null) {
+      unmountVisualElement(this.ve);
+      this.ve = null;
+    }
+    if (this.leaveEntry) {
+      NgmMotionDirective.activeLeaves.delete(this.leaveEntry);
+      this.leaveEntry = null;
+    }
+    this.cleanupLeaveMapEntry();
   }
 
   /** Completes the leave animation and removes the element from the DOM. */
   private completeLeave(): void {
     if (!this.leaveAnimationActive) return; // Already completed or cancelled.
-    this.leaveAnimationActive = false;
-    this.removeCancelLeaveListener();
-    // Clean up the deferred VE now that the exit animation is done.
-    if (this.ve !== null) {
-      unmountVisualElement(this.ve);
-      this.ve = null;
-    }
-    // Remove from active leaves (O(1) via stored reference).
-    if (this.leaveEntry) {
-      NgmMotionDirective.activeLeaves.delete(this.leaveEntry);
-      this.leaveEntry = null;
-    }
-    // Clean up the leaveMap entry on the LView so it doesn't linger.
-    this.cleanupLeaveMapEntry();
-    // Manually remove the element from the DOM.
-    // Angular's animation queue callback (nativeRemoveNode) was never called because
-    // the queue scheduler was not initialized. element.remove() is safe — the renderer's
-    // removeChild also calls element.remove(), so double-removal is a no-op.
+    this.cleanupLeaveState();
     this.element.remove();
   }
 
-  /** Removes the leaveMap entry from the LView so it doesn't linger after the animation. */
+  /** Removes this directive's leave registration from Angular's internal leave map. */
   private cleanupLeaveMapEntry(): void {
     const lView = this.leaveLView;
-    if (lView === null) return;
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- typing the untyped LView slot
-    const animData = lView[LVIEW_ANIMATIONS] as { leave?: Map<number, unknown> } | undefined;
-    animData?.leave?.delete(this.leaveNodeIndex);
+    const animateFn = this.leaveAnimateFn;
+    if (lView === null || animateFn === null) return;
+
+    const animationData = lView[LVIEW_ANIMATIONS] as LViewAnimations | undefined;
+    const leaveAnimations = animationData?.leave;
+    const nodeAnimations = leaveAnimations?.get(this.leaveNodeIndex);
+    if (nodeAnimations) {
+      nodeAnimations.animateFns = nodeAnimations.animateFns.filter((fn) => fn !== animateFn);
+      if (nodeAnimations.animateFns.length === 0) {
+        leaveAnimations?.delete(this.leaveNodeIndex);
+      }
+    }
+    if (leaveAnimations !== undefined && leaveAnimations.size === 0 && animationData?.running === undefined) {
+      ɵallLeavingAnimations.delete(lView[LVIEW_ID] as number);
+    }
+    this.leaveAnimateFn = null;
     this.leaveLView = null;
+  }
+
+  /** Route navigation teardown should bypass direct [exit] animations entirely. */
+  private shouldSkipLeaveAnimation(): boolean {
+    return this.router?.currentNavigation() !== null;
+  }
+
+  /** Finds Angular's internal animation queues across the current view chain. */
+  private getAngularAnimationQueues(): AngularAnimationQueue[] {
+    const lView = this.leaveLView;
+    if (lView === null) return [];
+
+    const queues: AngularAnimationQueue[] = [];
+    const seenViews = new Set<unknown[]>();
+    const seenQueues = new Set<AngularAnimationQueue>();
+    const pendingViews: unknown[][] = [lView];
+
+    while (pendingViews.length > 0) {
+      const currentView = pendingViews.pop();
+      if (currentView === undefined || seenViews.has(currentView)) continue;
+      seenViews.add(currentView);
+
+      const injector = currentView[LVIEW_INJECTOR] as
+        | { records?: Map<unknown, { value: unknown }> }
+        | undefined;
+      const records = injector?.records;
+      if (records !== undefined) {
+        for (const record of records.values()) {
+          const value = record.value;
+          if (
+            typeof value === 'object' &&
+            value !== null &&
+            'queue' in value &&
+            value.queue instanceof Set &&
+            'isScheduled' in value &&
+            typeof value.isScheduled === 'boolean' &&
+            'scheduler' in value &&
+            'injector' in value
+          ) {
+            const queue = value as AngularAnimationQueue;
+            if (!seenQueues.has(queue)) {
+              seenQueues.add(queue);
+              queues.push(queue);
+            }
+          }
+        }
+      }
+
+      const declarationView = currentView[LVIEW_DECLARATION_VIEW];
+      if (Array.isArray(declarationView)) {
+        pendingViews.push(declarationView);
+      }
+
+      const parentView = currentView[LVIEW_PARENT];
+      if (Array.isArray(parentView)) {
+        pendingViews.push(parentView);
+      }
+    }
+
+    return queues;
+  }
+
+  /** Returns the environment injector Angular uses for after-render scheduling. */
+  private getAnimationQueueInjector(): Injector | null {
+    const lView = this.leaveLView;
+    if (lView === null) return null;
+    return lView[LVIEW_INJECTOR] as Injector;
+  }
+
+  /** Schedules Angular's queued leave callback so host removal can complete later. */
+  private ensureAngularAnimationQueueScheduler(): void {
+    for (const animationQueue of this.getAngularAnimationQueues()) {
+      if (animationQueue.scheduler === null) {
+        animationQueue.scheduler = () => {
+          if (animationQueue.isScheduled) return;
+
+          afterNextRender(
+            () => {
+              animationQueue.isScheduled = false;
+              for (const animateFn of animationQueue.queue) {
+                animateFn();
+              }
+              animationQueue.queue.clear();
+            },
+            {
+              injector: animationQueue.injector as Injector,
+            },
+          );
+          animationQueue.isScheduled = true;
+        };
+      }
+
+      animationQueue.scheduler(animationQueue.injector);
+    }
+  }
+
+  /** Route teardown skips animations, so flush Angular's queued leave callback immediately. */
+  private flushAngularAnimationQueue(): void {
+    for (const animationQueue of this.getAngularAnimationQueues()) {
+      animationQueue.scheduler = null;
+      animationQueue.isScheduled = false;
+      for (const animateFn of animationQueue.queue) {
+        animateFn();
+      }
+      animationQueue.queue.clear();
+    }
+  }
+
+  /** Route teardown can leave the routed host behind, so remove that host directly. */
+  private removeRoutedHostIfPresent(): void {
+    const routedHost = this.getRoutedHostElement();
+    routedHost?.remove();
+  }
+
+  /** Finds the routed component host as the ancestor inserted directly after a router-outlet. */
+  private getRoutedHostElement(): HTMLElement | null {
+    let currentElement: HTMLElement | null = this.element;
+
+    while (currentElement !== null) {
+      if (currentElement.previousElementSibling?.tagName === 'ROUTER-OUTLET') {
+        return currentElement;
+      }
+      currentElement = currentElement.parentElement;
+    }
+
+    return null;
   }
 
   /**
