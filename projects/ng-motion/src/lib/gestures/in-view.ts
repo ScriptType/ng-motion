@@ -85,7 +85,10 @@ function isElement(value: unknown): value is Element {
 /** Build a stable string key from viewport options for change detection. */
 function viewportKey(vp: Record<string, unknown> | undefined): string {
   if (!vp) return '';
-  return `${String(vp['margin'] ?? '0px')}_${String(vp['amount'] ?? 'some')}_${String(vp['once'] ?? false)}`;
+  const margin = typeof vp['margin'] === 'string' ? vp['margin'] : '0px';
+  const amount = typeof vp['amount'] === 'string' ? vp['amount'] : 'some';
+  const once = typeof vp['once'] === 'boolean' ? vp['once'] : false;
+  return `${margin}_${amount}_${String(once)}`;
 }
 
 export class InViewFeature extends Feature {
@@ -132,7 +135,7 @@ export class InViewFeature extends Feature {
    */
   private stopWhileInViewAnimations(): void {
     const whileInView = this.node.getProps().whileInView;
-    if (typeof whileInView !== 'object' || Array.isArray(whileInView) || whileInView === null) return;
+    if (typeof whileInView !== 'object' || Array.isArray(whileInView)) return;
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure to separate animation targets from config
     const { transition, transitionEnd, ...targets } = whileInView;
