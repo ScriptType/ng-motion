@@ -10,6 +10,15 @@
   "dependencies": {
     "tslib": "^2.3.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ScriptType/ng-motion.git",
+    "directory": "projects/ng-motion"
+  },
+  "bugs": {
+    "url": "https://github.com/ScriptType/ng-motion/issues"
+  },
+  "homepage": "https://ng-motion.dev",
   "sideEffects": [
     "./src/lib/test-env.ts"
   ]
