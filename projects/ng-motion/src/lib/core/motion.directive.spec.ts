@@ -375,7 +375,7 @@ describe('NgmMotionDirective', () => {
 
       const directive = getDirective(harness.fixture);
       const renderer = (
-        directive as {
+        directive as unknown as {
           directLeave: {
             getRoutedHostRenderer(host: HTMLElement): { removeChild: (...args: unknown[]) => void } | null;
           };
