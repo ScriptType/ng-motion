@@ -3,8 +3,8 @@ import { RouterOutlet } from '@angular/router';
 
 const ROUTER_OUTLET_PATCH_MARK = Symbol.for('ngmMotion.routerOutletTeardownAdapterPatched');
 const ROUTER_OUTLET_WARN_MARK = Symbol.for('ngmMotion.routerOutletTeardownAdapterWarned');
-const SUPPORTED_ANGULAR_MAJOR = '21';
-const SUPPORTED_ANGULAR_MINOR = '2';
+const SUPPORTED_ANGULAR_MAJOR = '22';
+const SUPPORTED_ANGULAR_MINOR = '1';
 
 type RouterOutletPrototypeWithPatchState = typeof RouterOutlet.prototype & {
   [ROUTER_OUTLET_PATCH_MARK]?: boolean;
